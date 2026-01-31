@@ -5,8 +5,8 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: '/jieyou-piggy-bank/',
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/jieyou-piggy-bank/' : '/',
   test: {
     environment: 'jsdom',
     globals: true,
@@ -33,4 +33,4 @@ export default defineConfig({
     }), 
     tsconfigPaths()
   ],
-})
+}))
