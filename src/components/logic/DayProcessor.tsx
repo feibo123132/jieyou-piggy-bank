@@ -19,8 +19,8 @@ export const DayProcessor: React.FC = () => {
     const todayStr = format(today, 'yyyy-MM-dd');
     const lastProcessed = new Date(lastProcessedDate);
 
-    // If last processed date is today or future, do nothing
-    if (differenceInCalendarDays(today, lastProcessed) <= 0) return;
+    // If last processed date is today or yesterday (meaning no full past days to process), do nothing
+    if (differenceInCalendarDays(today, lastProcessed) <= 1) return;
 
     // Process all missing days from lastProcessed + 1 to yesterday
     let currentAmount = piggyBank.currentAmount;

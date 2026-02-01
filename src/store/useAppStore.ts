@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserSettings, Transaction, PiggyBankState } from '@/types';
-import { initCloudBase, loginAnonymous, addTransactionToCloud } from '@/lib/cloudbase';
+import { loginAnonymous, addTransactionToCloud } from '@/lib/cloudbase';
 
 interface AppState {
   settings: UserSettings;
@@ -23,7 +23,6 @@ const DEFAULT_SETTINGS: UserSettings = {
   isOnboarded: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  cloudEnvId: '',
 };
 
 const DEFAULT_PIGGY_BANK: PiggyBankState = {
@@ -50,16 +49,10 @@ export const useAppStore = create<AppState>()(
         // Optimistic update locally
         const newTransactions = [...state.transactions, transaction];
         
-        // Try to sync to cloud if envId is set
-        if (state.settings.cloudEnvId) {
-          // Ensure cloudbase is initialized
-          const app = initCloudBase(state.settings.cloudEnvId);
-          if (app) {
-             loginAnonymous().then(() => {
-                addTransactionToCloud(transaction);
-             }).catch(console.error);
-          }
-        }
+        // Try to sync to cloud (Auto Navigation)
+        loginAnonymous().then(() => {
+           addTransactionToCloud(transaction);
+        }).catch(console.error);
 
         return { transactions: newTransactions };
       }),

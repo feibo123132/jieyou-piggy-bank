@@ -17,7 +17,6 @@ const SettingsPage: React.FC = () => {
   
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(settings.fixedExpenses);
-  const [cloudEnvId, setCloudEnvId] = useState(settings.cloudEnvId || '');
   
   // New expense form state
   const [newExpenseLabel, setNewExpenseLabel] = useState('');
@@ -26,7 +25,6 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     setMonthlyBudget(settings.monthlyBudget.toString());
     setFixedExpenses(settings.fixedExpenses);
-    setCloudEnvId(settings.cloudEnvId || '');
   }, [settings]);
 
   const handleAddExpense = () => {
@@ -52,7 +50,6 @@ const SettingsPage: React.FC = () => {
       monthlyBudget: parseFloat(monthlyBudget) || 0,
       fixedExpenses,
       isOnboarded: true,
-      cloudEnvId,
     });
     navigate('/');
   };
@@ -151,19 +148,6 @@ const SettingsPage: React.FC = () => {
              </div>
           )}
         </div>
-      </Card>
-
-      <Card>
-        <h2 className="text-lg font-semibold mb-4 text-gray-700">云端同步 (腾讯云开发)</h2>
-        <Input
-          label="环境 ID (Env ID)"
-          value={cloudEnvId}
-          onChange={(e) => setCloudEnvId(e.target.value)}
-          placeholder="例如：jieyou-env-123456"
-        />
-        <p className="text-xs text-gray-400 mt-2">
-          输入腾讯云开发环境 ID 以启用多端同步功能。
-        </p>
       </Card>
 
       <div className="fixed bottom-8 left-0 right-0 px-4 md:relative md:bottom-auto md:px-0">

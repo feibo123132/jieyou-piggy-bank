@@ -1,34 +1,30 @@
 import cloudbase from '@cloudbase/js-sdk';
 
+const envId = import.meta.env.VITE_TCB_ENV_ID;
+
 let app: any = null;
 let auth: any = null;
 let db: any = null;
 
-export const initCloudBase = (envId: string) => {
-  if (!envId) return null;
-  
-  if (app) {
-    // If already initialized with same envId, return it
-    // Note: JS SDK doesn't expose envId easily on app instance, 
-    // but usually we only init once per session or reload.
-    return app;
-  }
-
+if (envId) {
   try {
     app = cloudbase.init({
       env: envId
     });
     auth = app.auth();
     db = app.database();
-    return app;
   } catch (e) {
     console.error('CloudBase init failed:', e);
-    return null;
   }
-};
+} else {
+  console.warn('VITE_TCB_ENV_ID is not set. Cloud sync will be disabled.');
+}
 
 export const loginAnonymous = async () => {
-  if (!auth) throw new Error('CloudBase not initialized');
+  if (!auth) {
+    console.warn('CloudBase not initialized (missing env ID?)');
+    return null;
+  }
   
   const loginState = await auth.getLoginState();
   if (!loginState) {

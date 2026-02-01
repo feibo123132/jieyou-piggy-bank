@@ -10,7 +10,6 @@ export interface UserSettings {
   isOnboarded: boolean; // Flag to check if user has completed initial setup
   createdAt: string;
   updatedAt: string;
-  cloudEnvId?: string; // Tencent CloudBase Environment ID
 }
 
 export type TransactionTag = 'necessary' | 'fixed' | 'optional';
