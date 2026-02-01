@@ -10,6 +10,7 @@ export interface UserSettings {
   isOnboarded: boolean; // Flag to check if user has completed initial setup
   createdAt: string;
   updatedAt: string;
+  username?: string; // For multi-device sync
 }
 
 export type TransactionTag = 'necessary' | 'fixed' | 'optional';

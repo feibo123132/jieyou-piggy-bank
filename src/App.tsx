@@ -1,14 +1,31 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
-import { DayProcessor } from '@/components/logic/DayProcessor';
 import DashboardPage from '@/pages/DashboardPage';
-import CalendarPage from '@/pages/CalendarPage';
 import SettingsPage from '@/pages/SettingsPage';
+import CalendarPage from '@/pages/CalendarPage';
+import { DayProcessor } from '@/components/logic/DayProcessor';
+import { useAppStore } from '@/store/useAppStore';
+import { LoginOverlay } from '@/components/auth/LoginOverlay';
 
 function App() {
+  const { settings, isInitialized, pullFromCloud } = useAppStore();
+
+  // Startup Sync: Ensure we have the latest data from cloud on app load
+  useEffect(() => {
+    if (settings.username && !isInitialized) {
+      console.log('[App] Starting initial sync...');
+      pullFromCloud();
+    }
+  }, [settings.username, isInitialized, pullFromCloud]);
+
+  if (!settings || !settings.username) {
+    return <LoginOverlay />;
+  }
+
   return (
-    <BrowserRouter>
+    <Router basename={import.meta.env.BASE_URL}>
       <DayProcessor />
       <Layout>
         <Routes>
@@ -18,7 +35,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
-    </BrowserRouter>
+    </Router>
   );
 }
 

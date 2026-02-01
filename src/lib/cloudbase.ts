@@ -38,47 +38,43 @@ export const getDb = () => {
   return db;
 };
 
-// Data Sync Logic
-export const syncTransactions = async (localTransactions: any[]) => {
+export const saveUserState = async (username: string, fullState: any) => {
   if (!db || !auth) return;
-  
-  const user = auth.currentUser;
-  if (!user) return;
+  const safeUsername = username?.trim();
+  if (!safeUsername) return;
 
   try {
-    const _ = db.command;
     const collection = db.collection('transactions');
-    
-    // 1. Fetch cloud data
-    const res = await collection.where({
-      _openid: user.uid
-    }).limit(1000).get();
-    
-    const cloudData = res.data;
-    
-    // 2. Simple Merge Strategy (Cloud wins for conflict, or Union)
-    // For MVP, let's just use Cloud as source of truth if it has data,
-    // otherwise push local data.
-    // Ideally we need a 'updatedAt' timestamp to merge correctly.
-    
-    // TODO: Implement robust sync with deletedAt handling
-    return cloudData;
+    // Use username as Document ID for full state sync
+    await collection.doc(safeUsername).set({
+      ...fullState,
+      updatedAt: new Date().toISOString()
+    });
+    console.log(`[Cloud] User state saved for: ${safeUsername}`);
   } catch (error) {
-    console.error('Sync failed:', error);
-    throw error;
+    console.error(`Failed to save user state to cloud for user [${safeUsername}]:`, error);
   }
 };
 
-export const addTransactionToCloud = async (transaction: any) => {
-  if (!db || !auth) return;
-  
+export const loadUserState = async (username: string) => {
+  if (!db || !auth) return null;
+  const safeUsername = username?.trim();
+  if (!safeUsername) return null;
+
   try {
     const collection = db.collection('transactions');
-    await collection.add({
-      ...transaction,
-      updatedAt: new Date().toISOString()
-    });
+    const res = await collection.doc(safeUsername).get();
+    
+    if (res.data && res.data.length > 0) {
+       // CloudBase get() returns array even for doc() query sometimes, or check res.data object
+       // SDK doc says doc().get() returns { data: Object, ... } if exists
+       // But let's be safe.
+       return res.data; 
+    }
+    // If doc not found
+    return null;
   } catch (error) {
-    console.error('Failed to add transaction to cloud:', error);
+    console.error(`Failed to load user state from cloud for user [${safeUsername}]:`, error);
+    return null;
   }
 };
