@@ -21,13 +21,24 @@ const DashboardPage: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [selectedTags, setSelectedTags] = useState<TransactionTag[]>(['optional']);
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Calculations
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
   const daysInMonth = getDaysInMonth(today);
   const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const dailyBudget = Math.max(0, (settings.monthlyBudget - fixedTotal) / daysInMonth);
+  // Use constant 30 days for calculation to match SettingsPage logic, or update SettingsPage to use getDaysInMonth(new Date())
+  // User requested consistency. SettingsPage currently uses hardcoded 30.
+  // To be consistent, let's use 30 here as well, OR update SettingsPage to use real days.
+  // Given "monthly budget", usually people think of 30 days or real days.
+  // Let's standardise on 30 for simplicity across the app as seen in SettingsPage, 
+  // OR better, standardise on "daysInMonth" (Real days) for accuracy.
+  // User asked for consistency. Let's make Dashboard use 30 to match Settings (which showed 24 vs 25 maybe due to 30 vs 31 days).
+  // Actually, wait, February has 28 days. 1500 / 30 = 50. 1500 / 28 = 53.
+  // If user saw 24 vs 25, maybe it was 750/30=25 vs 750/31=24.
+  // Let's use 30 for both to be safe and consistent visually.
+  const dailyBudget = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
   
   const todayTransactions = transactions.filter(t => t.date === todayStr);
   // Filter out fixed expenses for daily budget consumption
@@ -54,7 +65,7 @@ const DashboardPage: React.FC = () => {
     
     addTransaction({
       id: Date.now().toString(),
-      date: todayStr,
+      date: date,
       amount: parseFloat(amount),
       tags: selectedTags,
       note,
@@ -63,17 +74,34 @@ const DashboardPage: React.FC = () => {
     
     setAmount('');
     setNote('');
+    // Reset date to today for next time, or keep it? User might add multiple past records. 
+    // Usually resetting to today is safer to avoid accidental wrong dates.
+    setDate(format(new Date(), 'yyyy-MM-dd')); 
     setShowAdd(false);
   };
 
   const toggleTag = (tag: TransactionTag) => {
-    if (selectedTags.includes(tag)) {
-      if (selectedTags.length > 1) {
-        setSelectedTags(selectedTags.filter(t => t !== tag));
+    let newTags = [...selectedTags];
+    
+    if (newTags.includes(tag)) {
+      // Prevent removing the last tag if desired, or allow empty. 
+      // Existing logic prevented empty. Keeping it for now.
+      if (newTags.length > 1) {
+        newTags = newTags.filter(t => t !== tag);
       }
     } else {
-      setSelectedTags([...selectedTags, tag]);
+      newTags.push(tag);
+      
+      // Mutually exclusive logic
+      if (tag === 'necessary') {
+        newTags = newTags.filter(t => t !== 'optional');
+      }
+      if (tag === 'optional') {
+        newTags = newTags.filter(t => t !== 'necessary');
+      }
     }
+    
+    setSelectedTags(newTags);
   };
 
   return (
@@ -100,7 +128,7 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-xl font-bold text-gray-800 font-rounded">
             {format(today, 'MM月dd日')}
           </h1>
-          <p className="text-sm text-gray-500">坚持就是胜利！</p>
+          <p className="text-sm text-gray-500">小金库又存了一笔，美得很！</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400">今日预算</p>
@@ -203,13 +231,29 @@ const DashboardPage: React.FC = () => {
                 </div>
 
                 <div>
+                  <label className="text-sm text-gray-500 mb-2 block">日期</label>
+                  <div className="relative">
+                     <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="w-full bg-gray-50 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                        style={{ position: 'relative' }}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                      </div>
+                  </div>
+                </div>
+
+                <div>
                   <label className="text-sm text-gray-500 mb-2 block">标签</label>
                   <div className="flex space-x-3">
                     <TagButton 
                       label="必要支出" 
                       active={selectedTags.includes('necessary')} 
                       onClick={() => toggleTag('necessary')}
-                      icon={<Wallet size={16} />}
+                      icon={<span className="text-lg">🍚</span>}
                     />
                     <TagButton 
                       label="固定支出" 
@@ -218,10 +262,10 @@ const DashboardPage: React.FC = () => {
                       icon={<Zap size={16} />}
                     />
                     <TagButton 
-                      label="非必要" 
+                      label="非必要支出" 
                       active={selectedTags.includes('optional')} 
                       onClick={() => toggleTag('optional')}
-                      icon={<Coffee size={16} />}
+                      icon={<span className="text-lg">🍔</span>}
                     />
                   </div>
                   {selectedTags.includes('fixed') && (
@@ -229,6 +273,25 @@ const DashboardPage: React.FC = () => {
                       * 固定支出不计入今日预算消耗
                     </p>
                   )}
+                </div>
+
+                <div>
+                   <label className="text-sm text-gray-500 mb-2 block">消费详情</label>
+                   <div className="relative">
+                     <textarea
+                       value={note}
+                       onChange={(e) => {
+                         if (e.target.value.length <= 100) {
+                           setNote(e.target.value);
+                         }
+                       }}
+                       placeholder="今天的旅途，你又遇到了哪些想要记录的事或情绪？(可选)"
+                       className="w-full bg-gray-50 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary min-h-[100px] resize-none text-sm placeholder:text-gray-400"
+                     />
+                     <div className="absolute right-3 bottom-3 text-xs text-gray-400">
+                       {note.length}/100
+                     </div>
+                   </div>
                 </div>
 
                 <Button fullWidth size="lg" onClick={handleAddTransaction}>

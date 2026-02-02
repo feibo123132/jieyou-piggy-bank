@@ -111,7 +111,7 @@ const SettingsPage: React.FC = () => {
   };
 
   const totalFixed = fixedExpenses.reduce((sum, item) => sum + item.amount, 0);
-  const dailyBudget = Math.max(0, (parseFloat(monthlyBudget) - totalFixed) / 30).toFixed(0);
+  const dailyBudget = Math.max(0, ((parseFloat(monthlyBudget) || 0) - totalFixed) / 30).toFixed(0);
 
   // Calculate Real-time Monthly Remaining (Preview based on input)
   // We use the local input 'monthlyBudget' minus local 'fixedExpenses' sum
