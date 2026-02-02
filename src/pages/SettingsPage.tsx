@@ -114,9 +114,14 @@ const SettingsPage: React.FC = () => {
   };
 
   const totalFixed = fixedExpenses.reduce((sum, item) => sum + item.amount, 0);
+  
+  const formatCurrency = (amount: number) => {
+    return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1);
+  };
+
   // Calculate recommended daily budget (just for reference) based on real days in current month
   const daysInCurrentMonth = getDaysInMonth(new Date());
-  const recommendedDaily = Math.max(0, ((parseFloat(monthlyBudget) || 0) - totalFixed) / daysInCurrentMonth).toFixed(0);
+  const recommendedDaily = Math.max(0, ((parseFloat(monthlyBudget) || 0) - totalFixed) / daysInCurrentMonth);
 
   // Calculate Real-time Monthly Remaining (Preview based on input)
   // We use the local input 'monthlyBudget' minus local 'fixedExpenses' sum
@@ -165,16 +170,16 @@ const SettingsPage: React.FC = () => {
               type="number"
               value={dailyBudgetInput}
               onChange={(e) => setDailyBudgetInput(e.target.value)}
-              placeholder={`推荐值：${recommendedDaily}`}
+              placeholder={`推荐值：${formatCurrency(recommendedDaily)}`}
               className="text-lg"
             />
             <p className="text-sm text-gray-400 mt-2">
-              * 系统参考建议：基于月预算除去固定支出后，日均约 <span className="text-gray-600 font-bold">¥{recommendedDaily}</span>
+              * 系统参考建议：基于月预算除去固定支出后，日均约 <span className="text-gray-600 font-bold">¥{formatCurrency(recommendedDaily)}</span>
             </p>
           </div>
 
           <p className="text-sm text-gray-500 mt-1 border-t border-gray-100 pt-3">
-            本月实时剩余：<span className="text-green-600 font-bold">¥{monthlyRemaining.toFixed(0)}</span>
+            本月实时剩余：<span className="text-green-600 font-bold">¥{formatCurrency(monthlyRemaining)}</span>
           </p>
         </div>
       </Card>

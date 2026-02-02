@@ -6,7 +6,7 @@ export const useBudgetSummary = () => {
   
   const today = new Date();
   const currentMonthTransactions = transactions.filter(t => 
-    isSameMonth(new Date(t.date), today)
+    isSameMonth(new Date(t.date), today) && !t.deletedAt
   );
 
   // Real-time Remaining

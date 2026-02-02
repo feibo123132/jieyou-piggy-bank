@@ -4,6 +4,7 @@ import { format, getDaysInMonth } from 'date-fns';
 import { Plus, Check, Wallet, Coffee, Zap } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
+import { usePiggyBankLogic } from '@/hooks/usePiggyBankLogic';
 import { PiggyBankVisual } from '@/components/PiggyBankVisual';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -15,6 +16,7 @@ const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { settings, transactions, piggyBank, addTransaction } = useAppStore();
   const { monthlyRemaining } = useBudgetSummary();
+  const { currentAmount: piggyDisplayAmount, capacity: piggyCapacity } = usePiggyBankLogic();
   const [showAdd, setShowAdd] = useState(false);
   
   // Transaction Form State
@@ -53,8 +55,7 @@ const DashboardPage: React.FC = () => {
 
   // Total display in Piggy Bank (Confirmed Only to avoid user confusion)
   // We do NOT include todayPotentialSavings visually until it is processed the next day
-  const piggyDisplayAmount = piggyBank.currentAmount;
-  const isOverCapacity = piggyDisplayAmount >= piggyBank.capacityLevel;
+  const isOverCapacity = piggyDisplayAmount >= piggyCapacity;
 
   const handleAddTransaction = () => {
     if (!amount) return;
@@ -100,6 +101,10 @@ const DashboardPage: React.FC = () => {
     setSelectedTags(newTags);
   };
 
+  const formatCurrency = (amount: number) => {
+    return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1);
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Onboarding Banner - Only show if not onboarded */}
@@ -128,7 +133,7 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400">今日预算</p>
-          <p className="text-lg font-bold text-primary">¥{dailyBudget.toFixed(0)}</p>
+          <p className="text-lg font-bold text-primary">¥{formatCurrency(dailyBudget)}</p>
         </div>
       </div>
 
@@ -137,16 +142,16 @@ const DashboardPage: React.FC = () => {
         <div className="flex justify-between items-end mb-2">
           <span className="text-orange-100 font-medium">今日剩余</span>
           <span className="text-xs text-orange-100 opacity-80">
-            已用 ¥{todayConsumed.toFixed(0)}
+            已用 ¥{formatCurrency(todayConsumed)}
           </span>
         </div>
         <div className="text-4xl font-bold font-rounded mb-4">
-          ¥{todayRemaining.toFixed(0)}
+          ¥{formatCurrency(todayRemaining)}
         </div>
         
         <div className="flex justify-between items-center text-xs text-orange-100 mb-1">
            <span>今日进度</span>
-           <span>本月剩余: ¥{monthlyRemaining.toFixed(0)}</span>
+           <span>本月剩余: ¥{formatCurrency(monthlyRemaining)}</span>
         </div>
         <div className="w-full bg-black/10 rounded-full h-2 overflow-hidden">
           <div 
@@ -159,7 +164,7 @@ const DashboardPage: React.FC = () => {
       {/* Piggy Bank Visual */}
       <section className="py-4 relative">
         <div className="text-center mb-2">
-          <p className="text-sm text-gray-500">当前存钱罐 (等级 {piggyBank.capacityLevel})</p>
+          <p className="text-sm text-gray-500">当前存钱罐 (等级 {piggyCapacity})</p>
           {isOverCapacity && (
             <motion.p 
               initial={{ opacity: 0, y: 10 }}
@@ -172,7 +177,7 @@ const DashboardPage: React.FC = () => {
         </div>
         <PiggyBankVisual 
           currentAmount={piggyDisplayAmount} 
-          capacity={piggyBank.capacityLevel} 
+          capacity={piggyCapacity} 
         />
       </section>
 

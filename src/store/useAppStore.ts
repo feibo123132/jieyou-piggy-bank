@@ -12,6 +12,7 @@ interface AppState {
   setSettings: (settings: UserSettings) => void;
   updateSettings: (updates: Partial<UserSettings>) => void;
   addTransaction: (transaction: Transaction) => void;
+  updateTransaction: (transaction: Transaction) => void;
   removeTransaction: (id: string) => void;
   restoreTransaction: (id: string) => void;
   permanentlyDeleteTransaction: (id: string) => void;
@@ -70,6 +71,15 @@ export const useAppStore = create<AppState>()(
           const newTransactions = [...state.transactions, transaction];
           return { transactions: newTransactions };
         });
+        get().saveUserState();
+      },
+
+      updateTransaction: (transaction) => {
+        set((state) => ({
+          transactions: state.transactions.map(t => 
+            t.id === transaction.id ? transaction : t
+          )
+        }));
         get().saveUserState();
       },
 

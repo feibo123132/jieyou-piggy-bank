@@ -67,11 +67,10 @@ export const PiggyBankVisual: React.FC<PiggyBankVisualProps> = ({ currentAmount,
               width="200"
               height="200"
               fill="url(#liquidGradient)"
-              initial={{ y: 200 }}
-              animate={{ y: 200 - (percentage * 2) }}
+              initial={{ y: 160 }}
+              animate={{ y: 160 - (percentage * 1.2) }}
               transition={{ type: "spring", damping: 20, stiffness: 50 }}
             />
-            {/* Bubbles / Texture could go here */}
           </g>
 
           {/* Outline Layer (On top) */}
