@@ -6,6 +6,7 @@ export interface FixedExpense {
 
 export interface UserSettings {
   monthlyBudget: number;
+  dailyBudget: number; // Manually set daily limit
   fixedExpenses: FixedExpense[];
   isOnboarded: boolean; // Flag to check if user has completed initial setup
   createdAt: string;
@@ -22,6 +23,7 @@ export interface Transaction {
   tags: TransactionTag[];
   note?: string;
   createdAt: string;
+  deletedAt?: string; // ISO string for soft delete
 }
 
 export interface PiggyBankState {

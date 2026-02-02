@@ -12,6 +12,10 @@ interface AppState {
   setSettings: (settings: UserSettings) => void;
   updateSettings: (updates: Partial<UserSettings>) => void;
   addTransaction: (transaction: Transaction) => void;
+  removeTransaction: (id: string) => void;
+  restoreTransaction: (id: string) => void;
+  permanentlyDeleteTransaction: (id: string) => void;
+  cleanupTrash: () => void;
   updatePiggyBank: (updates: Partial<PiggyBankState>) => void;
   setLastProcessedDate: (date: string) => void;
   resetApp: () => void;
@@ -26,6 +30,7 @@ interface AppState {
 
 const DEFAULT_SETTINGS: UserSettings = {
   monthlyBudget: 0,
+  dailyBudget: 0, // Default to 0, means "not set" or "use fallback if any"
   fixedExpenses: [],
   isOnboarded: false,
   createdAt: new Date().toISOString(),
@@ -50,18 +55,60 @@ export const useAppStore = create<AppState>()(
 
       setSettings: (settings) => {
         set({ settings });
+        get().saveUserState();
       },
       
       updateSettings: (updates) => {
         set((state) => ({
           settings: { ...state.settings, ...updates, updatedAt: new Date().toISOString() }
         }));
+        get().saveUserState();
       },
 
       addTransaction: (transaction) => {
         set((state) => {
           const newTransactions = [...state.transactions, transaction];
           return { transactions: newTransactions };
+        });
+        get().saveUserState();
+      },
+
+      removeTransaction: (id) => {
+        set((state) => ({
+          transactions: state.transactions.map(t => 
+            t.id === id ? { ...t, deletedAt: new Date().toISOString() } : t
+          )
+        }));
+        get().saveUserState();
+      },
+
+      restoreTransaction: (id) => {
+        set((state) => ({
+          transactions: state.transactions.map(t => 
+            t.id === id ? { ...t, deletedAt: undefined } : t
+          )
+        }));
+        get().saveUserState();
+      },
+
+      permanentlyDeleteTransaction: (id) => {
+        set((state) => ({
+          transactions: state.transactions.filter(t => t.id !== id)
+        }));
+        get().saveUserState();
+      },
+
+      cleanupTrash: () => {
+        set((state) => {
+          const now = new Date();
+          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          
+          return {
+            transactions: state.transactions.filter(t => {
+              if (!t.deletedAt) return true;
+              return new Date(t.deletedAt) > sevenDaysAgo;
+            })
+          };
         });
       },
 

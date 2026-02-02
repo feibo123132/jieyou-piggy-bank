@@ -5,7 +5,10 @@ import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/store/useAppStore';
 
+import { useNavigate } from 'react-router-dom';
+
 export const Navbar: React.FC = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
   
@@ -94,6 +97,19 @@ export const Navbar: React.FC = () => {
                             transition={{ duration: 0.15 }}
                             className="absolute right-0 top-14 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden py-2 z-50"
                         >
+                           <button 
+                               onClick={() => {
+                                 navigate('/trash');
+                                 setIsDesktopMenuOpen(false);
+                               }}
+                               className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                           >
+                               <Trash2 size={18} />
+                               <span>垃圾桶</span>
+                           </button>
+
+                           <div className="h-px bg-gray-100 my-1" />
+
                            <button 
                                onClick={handleLogout}
                                className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center space-x-3 transition-colors"

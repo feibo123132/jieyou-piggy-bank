@@ -28,19 +28,15 @@ const DashboardPage: React.FC = () => {
   const todayStr = format(today, 'yyyy-MM-dd');
   const daysInMonth = getDaysInMonth(today);
   const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
-  // Use constant 30 days for calculation to match SettingsPage logic, or update SettingsPage to use getDaysInMonth(new Date())
-  // User requested consistency. SettingsPage currently uses hardcoded 30.
-  // To be consistent, let's use 30 here as well, OR update SettingsPage to use real days.
-  // Given "monthly budget", usually people think of 30 days or real days.
-  // Let's standardise on 30 for simplicity across the app as seen in SettingsPage, 
-  // OR better, standardise on "daysInMonth" (Real days) for accuracy.
-  // User asked for consistency. Let's make Dashboard use 30 to match Settings (which showed 24 vs 25 maybe due to 30 vs 31 days).
-  // Actually, wait, February has 28 days. 1500 / 30 = 50. 1500 / 28 = 53.
-  // If user saw 24 vs 25, maybe it was 750/30=25 vs 750/31=24.
-  // Let's use 30 for both to be safe and consistent visually.
-  const dailyBudget = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
   
-  const todayTransactions = transactions.filter(t => t.date === todayStr);
+  // Use manual daily budget if set, otherwise fallback to calculated
+  // Calculated fallback: (Monthly - Fixed) / 30
+  const calculatedDaily = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
+  const dailyBudget = settings.dailyBudget && settings.dailyBudget > 0 
+    ? settings.dailyBudget 
+    : calculatedDaily;
+  
+  const todayTransactions = transactions.filter(t => t.date === todayStr && !t.deletedAt);
   // Filter out fixed expenses for daily budget consumption
   const todayConsumed = todayTransactions
     .filter(t => !t.tags.includes('fixed'))

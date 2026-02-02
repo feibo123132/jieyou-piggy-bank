@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { FixedExpense } from '@/types';
 import { Reorder, AnimatePresence } from 'framer-motion';
-import { isSameMonth } from 'date-fns';
+import { isSameMonth, getDaysInMonth } from 'date-fns';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ const SettingsPage: React.FC = () => {
   const { totalVariableSpent } = useBudgetSummary();
   
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
+  const [dailyBudgetInput, setDailyBudgetInput] = useState((settings.dailyBudget || 0).toString());
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(settings.fixedExpenses);
   const [username, setUsername] = useState(settings.username || '');
   const [isSaved, setIsSaved] = useState(false);
@@ -31,6 +32,7 @@ const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     setMonthlyBudget(settings.monthlyBudget.toString());
+    setDailyBudgetInput((settings.dailyBudget || 0).toString());
     setFixedExpenses(settings.fixedExpenses);
   }, [settings]);
 
@@ -97,6 +99,7 @@ const SettingsPage: React.FC = () => {
 
     updateSettings({
       monthlyBudget: parseFloat(monthlyBudget) || 0,
+      dailyBudget: parseFloat(dailyBudgetInput) || 0,
       fixedExpenses: finalFixedExpenses,
       isOnboarded: true,
       username,
@@ -111,7 +114,9 @@ const SettingsPage: React.FC = () => {
   };
 
   const totalFixed = fixedExpenses.reduce((sum, item) => sum + item.amount, 0);
-  const dailyBudget = Math.max(0, ((parseFloat(monthlyBudget) || 0) - totalFixed) / 30).toFixed(0);
+  // Calculate recommended daily budget (just for reference) based on real days in current month
+  const daysInCurrentMonth = getDaysInMonth(new Date());
+  const recommendedDaily = Math.max(0, ((parseFloat(monthlyBudget) || 0) - totalFixed) / daysInCurrentMonth).toFixed(0);
 
   // Calculate Real-time Monthly Remaining (Preview based on input)
   // We use the local input 'monthlyBudget' minus local 'fixedExpenses' sum
@@ -144,20 +149,34 @@ const SettingsPage: React.FC = () => {
 
       <Card>
         <h2 className="text-lg font-semibold mb-4 text-gray-700">预算设置</h2>
-        <Input
-          label="月度总预算"
-          type="number"
-          value={monthlyBudget}
-          onChange={(e) => setMonthlyBudget(e.target.value)}
-          placeholder="例如：3000"
-          className="text-lg"
-        />
-        <p className="text-sm text-gray-500 mt-2">
-          除去固定支出后，日均可用：<span className="text-primary font-bold">¥{dailyBudget}</span>
-        </p>
-        <p className="text-sm text-gray-500 mt-1">
-          本月实时剩余：<span className="text-green-600 font-bold">¥{monthlyRemaining.toFixed(0)}</span>
-        </p>
+        <div className="space-y-4">
+          <Input
+            label="月度总预算"
+            type="number"
+            value={monthlyBudget}
+            onChange={(e) => setMonthlyBudget(e.target.value)}
+            placeholder="例如：3000"
+            className="text-lg"
+          />
+          
+          <div className="pt-2">
+            <Input
+              label="日均可用限额 (人工设置)"
+              type="number"
+              value={dailyBudgetInput}
+              onChange={(e) => setDailyBudgetInput(e.target.value)}
+              placeholder={`推荐值：${recommendedDaily}`}
+              className="text-lg"
+            />
+            <p className="text-sm text-gray-400 mt-2">
+              * 系统参考建议：基于月预算除去固定支出后，日均约 <span className="text-gray-600 font-bold">¥{recommendedDaily}</span>
+            </p>
+          </div>
+
+          <p className="text-sm text-gray-500 mt-1 border-t border-gray-100 pt-3">
+            本月实时剩余：<span className="text-green-600 font-bold">¥{monthlyRemaining.toFixed(0)}</span>
+          </p>
+        </div>
       </Card>
 
       <Card>

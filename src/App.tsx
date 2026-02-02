@@ -5,6 +5,7 @@ import { Layout } from '@/components/layout/Layout';
 import DashboardPage from '@/pages/DashboardPage';
 import SettingsPage from '@/pages/SettingsPage';
 import CalendarPage from '@/pages/CalendarPage';
+import TrashPage from '@/pages/TrashPage';
 import { DayProcessor } from '@/components/logic/DayProcessor';
 import { useAppStore } from '@/store/useAppStore';
 import { LoginOverlay } from '@/components/auth/LoginOverlay';
@@ -32,6 +33,7 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/trash" element={<TrashPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

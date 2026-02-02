@@ -9,13 +9,13 @@ import {
   getDay, 
   getDaysInMonth
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { motion } from 'framer-motion';
 
 const CalendarPage: React.FC = () => {
-  const { transactions, settings } = useAppStore();
+  const { transactions, settings, removeTransaction } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const firstDayOfMonth = startOfMonth(currentDate);
@@ -27,15 +27,19 @@ const CalendarPage: React.FC = () => {
   const emptyDays = Array(startDay).fill(null);
 
   // Stats for the month
-  const monthTransactions = transactions.filter(t => isSameMonth(new Date(t.date), currentDate));
+  const monthTransactions = transactions.filter(t => isSameMonth(new Date(t.date), currentDate) && !t.deletedAt);
   const totalSpent = monthTransactions.reduce((sum, t) => sum + t.amount, 0);
   
   const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const dailyBudget = Math.max(0, (settings.monthlyBudget - fixedTotal) / getDaysInMonth(currentDate));
+  
+  const calculatedDaily = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
+  const dailyBudget = settings.dailyBudget && settings.dailyBudget > 0 
+    ? settings.dailyBudget 
+    : calculatedDaily;
 
   const getDayStatus = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    const dayTransactions = transactions.filter(t => t.date === dateStr);
+    const dayTransactions = transactions.filter(t => t.date === dateStr && !t.deletedAt);
     
     // Check if future
     if (date > new Date()) return 'future';
@@ -54,6 +58,12 @@ const CalendarPage: React.FC = () => {
     if (savings > 0) return 'saved';
     if (savings < 0) return 'overspent';
     return 'neutral'; // Exactly 0 or no budget
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('确定要删除这条记录吗？')) {
+      removeTransaction(id);
+    }
   };
 
   return (
@@ -157,7 +167,7 @@ const CalendarPage: React.FC = () => {
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .slice(0, 5)
             .map((t) => (
-              <div key={t.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100">
+              <div key={t.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-gray-100 group">
                 <div className="flex items-center space-x-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                     t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
@@ -172,7 +182,16 @@ const CalendarPage: React.FC = () => {
                     <p className="text-xs text-gray-400">{format(new Date(t.date), 'MM-dd')}</p>
                   </div>
                 </div>
-                <span className="font-bold text-gray-900">-¥{t.amount}</span>
+                <div className="flex items-center space-x-3">
+                  <span className="font-bold text-gray-900">-¥{t.amount}</span>
+                  <button 
+                    onClick={() => handleDelete(t.id)}
+                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    aria-label="删除"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))
         )}
