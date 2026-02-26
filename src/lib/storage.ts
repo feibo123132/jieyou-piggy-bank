@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
 // Default Initial States
 const DEFAULT_SETTINGS: UserSettings = {
   monthlyBudget: 0,
+  dailyBudget: 0,
   fixedExpenses: [],
   isOnboarded: false,
   createdAt: new Date().toISOString(),
