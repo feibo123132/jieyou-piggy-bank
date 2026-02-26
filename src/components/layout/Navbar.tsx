@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Settings, Menu, X, LogOut, Box, Trash2, Volume2, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, Calendar, Settings, Menu, X, LogOut, Box, Trash2, Volume2, BarChart2, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/store/useAppStore';
@@ -15,7 +15,7 @@ export const Navbar: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const desktopMenuRef = useRef<HTMLDivElement>(null);
   
-  const { updateSettings } = useAppStore();
+  const { updateSettings, settings } = useAppStore();
 
   // Close mobile menu when clicking outside
   useEffect(() => {
@@ -97,6 +97,14 @@ export const Navbar: React.FC = () => {
                             transition={{ duration: 0.15 }}
                             className="absolute right-0 top-14 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden py-2 z-50"
                         >
+                           <div className="px-4 py-3 border-b border-gray-100 mb-1">
+                             <div className="flex items-center space-x-2 text-gray-500 mb-1">
+                               <User size={14} />
+                               <span className="text-xs">当前账号</span>
+                             </div>
+                             <p className="font-bold text-gray-800 truncate">{settings.username || '未登录'}</p>
+                           </div>
+
                            <button 
                                onClick={() => {
                                  navigate('/trash');

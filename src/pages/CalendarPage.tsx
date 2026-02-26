@@ -10,7 +10,7 @@ import {
   getDaysInMonth
 } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Trash2, Check, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Trash2, Check, Zap, ChevronDown } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,6 +20,7 @@ import { TransactionTag, Transaction } from '@/types';
 const CalendarPage: React.FC = () => {
   const { transactions, settings, removeTransaction, updateTransaction } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewingDate, setViewingDate] = useState<Date | null>(null);
   
   // Edit Modal State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -103,6 +104,7 @@ const CalendarPage: React.FC = () => {
   };
 
   const openEditModal = (transaction: Transaction) => {
+    setViewingDate(null); // Close the day details modal if open
     setEditingTransaction(transaction);
     setEditAmount(transaction.amount.toString());
     setEditDate(transaction.date);
@@ -244,8 +246,9 @@ const CalendarPage: React.FC = () => {
               <motion.div
                 key={date.toString()}
                 whileTap={{ scale: 0.9 }}
+                onClick={() => setViewingDate(date)}
                 className={`
-                  aspect-square rounded-xl flex flex-col items-center justify-center text-sm font-medium relative
+                  aspect-square rounded-xl flex flex-col items-center justify-center text-sm font-medium relative cursor-pointer
                   ${isTodayDate ? 'ring-2 ring-gray-900 ring-offset-2' : ''}
                   ${status === 'saved' ? 'bg-secondary/20 text-secondary' : ''}
                   ${status === 'overspent' ? 'bg-primary/20 text-primary' : ''}
@@ -338,6 +341,89 @@ const CalendarPage: React.FC = () => {
           })
         )}
       </div>
+
+      {/* Day Details Modal */}
+      <AnimatePresence>
+        {viewingDate && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingDate(null)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 md:max-w-4xl md:mx-auto max-h-[80vh] flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-6 shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">
+                    {format(viewingDate, 'MM月dd日 EEEE', { locale: zhCN })}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    当日支出: ¥{formatCurrency(
+                      transactions
+                        .filter(t => t.date === format(viewingDate, 'yyyy-MM-dd') && !t.deletedAt)
+                        .reduce((sum, t) => sum + t.amount, 0)
+                    )}
+                  </p>
+                </div>
+                <button onClick={() => setViewingDate(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
+                  <ChevronDown size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-3 overflow-y-auto pb-8">
+                {transactions.filter(t => t.date === format(viewingDate, 'yyyy-MM-dd') && !t.deletedAt).length === 0 ? (
+                  <div className="text-center py-10 text-gray-400">
+                    <p>当日无消费记录</p>
+                  </div>
+                ) : (
+                  transactions
+                    .filter(t => t.date === format(viewingDate, 'yyyy-MM-dd') && !t.deletedAt)
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((t) => (
+                      <div 
+                        key={t.id} 
+                        onClick={() => openEditModal(t)}
+                        className="bg-gray-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100 group cursor-pointer active:scale-[0.98] transition-all"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
+                            t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                          }`}>
+                            {t.tags.includes('fixed') ? '固' : t.tags.includes('necessary') ? '必' : '非'}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">
+                              {t.note || (t.tags.includes('fixed') ? '固定支出' : '日常消费')}
+                            </p>
+                            <p className="text-xs text-gray-400">{format(new Date(t.date), 'HH:mm')}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="font-bold text-gray-900">-¥{formatCurrency(t.amount)}</span>
+                          <button 
+                            onClick={(e) => handleDelete(t.id, e)}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                            aria-label="删除"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Edit Transaction Modal */}
       <AnimatePresence>

@@ -22,11 +22,14 @@ interface AppState {
   resetApp: () => void;
   
   // Cloud Sync Actions
-  pullFromCloud: (username?: string) => Promise<void>;
+  // Modified to return a status instead of just void
+  pullFromCloud: (username?: string) => Promise<{ status: 'success' | 'auth_required' | 'not_found' | 'error', data?: any }>;
+  verifyAndLoadData: (password: string, pendingData: any) => Promise<boolean>;
   saveUserState: () => Promise<void>;
   
   // State Flags
   isInitialized: boolean;
+  isLocked: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -37,6 +40,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   username: '',
+  passwordHash: '',
 };
 
 const DEFAULT_PIGGY_BANK: PiggyBankState = {
@@ -53,6 +57,7 @@ export const useAppStore = create<AppState>()(
       piggyBank: DEFAULT_PIGGY_BANK,
       lastProcessedDate: new Date().toISOString().split('T')[0],
       isInitialized: false,
+      isLocked: true, // Default to locked
 
       setSettings: (settings) => {
         set({ settings });
@@ -138,6 +143,7 @@ export const useAppStore = create<AppState>()(
         piggyBank: DEFAULT_PIGGY_BANK,
         lastProcessedDate: new Date().toISOString().split('T')[0],
         isInitialized: false,
+        isLocked: true,
       }),
 
       saveUserState: async () => {
@@ -170,11 +176,15 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      // Helper to hash password
+      // Note: In a real app, use a proper library or robust implementation.
+      // Here we use a simple SHA-256 via Web Crypto API.
+      
       pullFromCloud: async (targetUsername?: string) => {
         const username = targetUsername || get().settings.username;
         if (!username) {
              console.warn('[PULL SKIPPED] 无用户名，跳过拉取');
-             return;
+             return { status: 'error' };
         }
 
         console.log(`[PULL STARTING] 开始为用户 ${username} 拉取云端数据...`);
@@ -182,42 +192,74 @@ export const useAppStore = create<AppState>()(
           await loginAnonymous();
           const db = getDb();
           const cloudDoc = await db.collection('transactions').doc(username).get();
-          // Adjust based on SDK return type. If doc exists, data is usually an object or array of 1.
-          // cloudbase-js-sdk doc().get() returns { data: [...] } usually for query, but for doc() it might be different.
-          // Based on user provided code:
           const cloudData = (cloudDoc.data && cloudDoc.data.length > 0) ? cloudDoc.data[0] : null;
 
           if (cloudData) {
-            console.log('[PULL FOUND] ☁️ 在云端找到数据，正在同步到本地...', cloudData);
-            set({ 
-                settings: cloudData.settings,
-                transactions: cloudData.transactions,
-                piggyBank: cloudData.piggyBank,
-                lastProcessedDate: cloudData.lastProcessedDate,
-                isInitialized: true 
-            });
-          } else {
-            console.log('[PULL EMPTY] ☁️ 云端无数据，执行创世推送...');
+            console.log('[PULL FOUND] ☁️ 在云端找到数据');
             
-            if (targetUsername) {
-                 set(state => ({
-                     settings: { ...state.settings, username: targetUsername }
-                 }));
+            // Check if password protection is enabled
+            if (cloudData.settings && cloudData.settings.passwordHash) {
+               console.log('[AUTH REQUIRED] 🔒 账号受密码保护，等待验证...');
+               // Return the data to the caller (UI) to handle verification
+               // Do NOT set state yet
+               return { status: 'auth_required', data: cloudData };
+            } else {
+               // Legacy account or no password - load immediately
+               console.log('[AUTH SKIP] 🔓 无密码，直接加载...');
+               set({ 
+                  settings: cloudData.settings,
+                  transactions: cloudData.transactions,
+                  piggyBank: cloudData.piggyBank,
+                  lastProcessedDate: cloudData.lastProcessedDate,
+                  isInitialized: true,
+                  isLocked: false 
+               });
+               return { status: 'success' };
             }
-            
-            await get().saveUserState(); // Push current state as Genesis
-            set({ isInitialized: true });
+          } else {
+            console.log('[PULL EMPTY] ☁️ 云端无数据，准备新注册...');
+            return { status: 'not_found' };
           }
         } catch (error) {
           console.error('[PULL FAILED] ❌ 从云端拉取数据失败！', error);
           // 失败时也要初始化，防止应用卡死，并允许用户离线使用
-          set({ isInitialized: true });
+          set({ isInitialized: true, isLocked: false }); // Allow offline access if sync fails? Or lock? 
+          // For now, let's assume offline access is okay but warn user.
           
           if (targetUsername) {
              set((state) => ({
               settings: { ...state.settings, username: targetUsername },
             }));
           }
+          return { status: 'error' };
+        }
+      },
+
+      verifyAndLoadData: async (password: string, pendingData: any) => {
+        if (!pendingData || !pendingData.settings || !pendingData.settings.passwordHash) {
+           return false;
+        }
+
+        // Hash the input password
+        const msgBuffer = new TextEncoder().encode(password);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        if (hashHex === pendingData.settings.passwordHash) {
+           console.log('[AUTH SUCCESS] 🔓 密码验证通过，加载数据...');
+           set({ 
+              settings: pendingData.settings,
+              transactions: pendingData.transactions,
+              piggyBank: pendingData.piggyBank,
+              lastProcessedDate: pendingData.lastProcessedDate,
+              isInitialized: true,
+              isLocked: false
+           });
+           return true;
+        } else {
+           console.warn('[AUTH FAILED] 🔒 密码错误！');
+           return false;
         }
       }
     }),

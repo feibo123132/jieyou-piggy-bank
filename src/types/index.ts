@@ -12,6 +12,7 @@ export interface UserSettings {
   createdAt: string;
   updatedAt: string;
   username?: string; // For multi-device sync
+  passwordHash?: string; // SHA-256 hash for authentication
 }
 
 export type TransactionTag = 'necessary' | 'fixed' | 'optional';

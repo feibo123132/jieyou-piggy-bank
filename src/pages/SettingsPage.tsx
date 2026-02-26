@@ -142,17 +142,6 @@ const SettingsPage: React.FC = () => {
       </div>
 
       <Card>
-        <h2 className="text-lg font-semibold mb-4 text-gray-700">当前账号</h2>
-        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
-           <div className="flex flex-col">
-             <span className="text-sm text-gray-500">已登录用户</span>
-             <span className="font-bold text-primary text-lg">{settings.username}</span>
-           </div>
-           {/* Future: Add Logout button here */}
-        </div>
-      </Card>
-
-      <Card>
         <h2 className="text-lg font-semibold mb-4 text-gray-700">预算设置</h2>
         <div className="space-y-4">
           <Input
