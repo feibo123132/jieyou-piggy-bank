@@ -52,8 +52,8 @@ export const DayProcessor: React.FC = () => {
       currentAmount += savings;
       
       // Check for Upgrade
-      // Levels: 30, 50, 100, 200, 500, 1000...
-      const LEVELS = [30, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+      // Levels: 30 (Ordinary), 50 (Fine), 100 (Rare), 200 (Epic), 500 (Legendary)
+      const LEVELS = [30, 50, 100, 200, 500];
       
       while (currentAmount >= capacity) {
         // Explode!

@@ -6,9 +6,20 @@ interface PiggyBankVisualProps {
   capacity: number;
 }
 
+export const LEVEL_STYLES: Record<number, { start: string; end: string; stroke: string; name: string }> = {
+  30: { start: '#E5E7EB', end: '#9CA3AF', stroke: '#6B7280', name: '普通' }, // Ordinary (Gray)
+  50: { start: '#86EFAC', end: '#22C55E', stroke: '#16A34A', name: '精良' }, // Fine (Green)
+  100: { start: '#93C5FD', end: '#3B82F6', stroke: '#2563EB', name: '稀有' }, // Rare (Blue)
+  200: { start: '#C084FC', end: '#9333EA', stroke: '#9333EA', name: '史诗' }, // Epic (Purple)
+  500: { start: '#FCD34D', end: '#F59E0B', stroke: '#D97706', name: '传说' }, // Legendary (Gold)
+};
+
 export const PiggyBankVisual: React.FC<PiggyBankVisualProps> = ({ currentAmount, capacity }) => {
   const percentage = Math.min(100, Math.max(0, (currentAmount / capacity) * 100));
   const controls = useAnimation();
+
+  // Get style based on capacity, fallback to Ordinary or Legendary if out of range
+  const style = LEVEL_STYLES[capacity] || (capacity > 500 ? LEVEL_STYLES[500] : LEVEL_STYLES[30]);
 
   useEffect(() => {
     if (percentage >= 100) {
@@ -41,8 +52,8 @@ export const PiggyBankVisual: React.FC<PiggyBankVisualProps> = ({ currentAmount,
             </clipPath>
             
             <linearGradient id="liquidGradient" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" stopColor="#FFD93D" />
-              <stop offset="100%" stopColor="#FF6B35" />
+              <stop offset="0%" stopColor={style.start} />
+              <stop offset="100%" stopColor={style.end} />
             </linearGradient>
           </defs>
 
@@ -82,7 +93,7 @@ export const PiggyBankVisual: React.FC<PiggyBankVisualProps> = ({ currentAmount,
               c2.1,3.2,5.7,5.3,9.8,5.3c5.1,0,9.4-3.3,11-7.9c12.3-2.1,21.8-12,23.5-24.3c3.4-1.2,6.3-3.5,8.1-6.6
               C163.5,103.4,163.7,92.5,160.8,84.6z"
             fill="none"
-            stroke="#FF6B35"
+            stroke={style.stroke}
             strokeWidth="4"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -92,7 +103,7 @@ export const PiggyBankVisual: React.FC<PiggyBankVisualProps> = ({ currentAmount,
           <circle cx="125" cy="70" r="3" fill="#1F2937" />
           
           {/* Ear detail */}
-          <path d="M130,50 Q135,40 145,45" fill="none" stroke="#FF6B35" strokeWidth="3" strokeLinecap="round" />
+          <path d="M130,50 Q135,40 145,45" fill="none" stroke={style.stroke} strokeWidth="3" strokeLinecap="round" />
 
           {/* Coin Slot */}
           <rect x="90" y="45" width="20" height="4" rx="2" fill="#1F2937" opacity="0.2" />

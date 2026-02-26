@@ -5,7 +5,7 @@ import { Plus, Check, Wallet, Coffee, Zap } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
 import { usePiggyBankLogic } from '@/hooks/usePiggyBankLogic';
-import { PiggyBankVisual } from '@/components/PiggyBankVisual';
+import { PiggyBankVisual, LEVEL_STYLES } from '@/components/PiggyBankVisual';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -56,6 +56,9 @@ const DashboardPage: React.FC = () => {
   // Total display in Piggy Bank (Confirmed Only to avoid user confusion)
   // We do NOT include todayPotentialSavings visually until it is processed the next day
   const isOverCapacity = piggyDisplayAmount >= piggyCapacity;
+
+  // Level Config
+  const levelConfig = LEVEL_STYLES[piggyCapacity] || (piggyCapacity > 500 ? LEVEL_STYLES[500] : LEVEL_STYLES[30]);
 
   const handleAddTransaction = () => {
     if (!amount) return;
@@ -164,7 +167,9 @@ const DashboardPage: React.FC = () => {
       {/* Piggy Bank Visual */}
       <section className="py-4 relative">
         <div className="text-center mb-2">
-          <p className="text-sm text-gray-500">当前存钱罐 (等级 {piggyCapacity})</p>
+          <p className="text-sm text-gray-500">
+            当前存钱罐：<span style={{ color: levelConfig.stroke, fontWeight: 'bold' }}>{levelConfig.name}</span> (等级 {piggyCapacity})
+          </p>
           {isOverCapacity && (
             <motion.p 
               initial={{ opacity: 0, y: 10 }}
