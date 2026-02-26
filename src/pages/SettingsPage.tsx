@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Save, ArrowLeft, GripVertical, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, GripVertical, Pencil, Check, X, CloudDownload } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,7 @@ import { isSameMonth, getDaysInMonth } from 'date-fns';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { settings, updateSettings, transactions, saveUserState } = useAppStore();
+  const { settings, updateSettings, transactions, saveUserState, migrateFromOldAccount } = useAppStore();
   const { totalVariableSpent } = useBudgetSummary();
   
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
@@ -20,6 +20,11 @@ const SettingsPage: React.FC = () => {
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(settings.fixedExpenses);
   const [username, setUsername] = useState(settings.username || '');
   const [isSaved, setIsSaved] = useState(false);
+  
+  // Migration state
+  const [oldUsernameInput, setOldUsernameInput] = useState('');
+  const [migrationStatus, setMigrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [migrationMessage, setMigrationMessage] = useState('');
   
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,6 +82,24 @@ const SettingsPage: React.FC = () => {
     setEditingId(null);
     setEditLabel('');
     setEditAmount('');
+  };
+
+  const handleMigrate = async () => {
+    if (!oldUsernameInput.trim()) return;
+    setMigrationStatus('loading');
+    setMigrationMessage('');
+    
+    const result = await migrateFromOldAccount(oldUsernameInput.trim());
+    
+    if (result.status === 'success') {
+       setMigrationStatus('success');
+       setMigrationMessage('✅ 找回成功！旧数据已合并到当前账号。');
+       // Reload local state from store if needed, but store update should trigger re-render
+       setFixedExpenses(useAppStore.getState().settings.fixedExpenses); 
+    } else {
+       setMigrationStatus('error');
+       setMigrationMessage(`❌ ${result.message || '找回失败'}`);
+    }
   };
 
   const handleSave = async () => {
@@ -271,6 +294,38 @@ const SettingsPage: React.FC = () => {
              </div>
           )}
         </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-lg font-semibold mb-4 text-gray-700 flex items-center">
+          <CloudDownload size={20} className="mr-2" />
+          找回旧账号数据
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          如果您之前使用“xxxxxx”格式的账号登录，请输入旧账号ID以找回数据并合并到当前邮箱账号。
+        </p>
+        <div className="flex gap-2 items-center">
+           <div className="flex-1">
+             <Input 
+               placeholder="输入旧账号ID" 
+               value={oldUsernameInput}
+               onChange={(e) => setOldUsernameInput(e.target.value)}
+             />
+           </div>
+           <Button 
+             onClick={handleMigrate} 
+             disabled={!oldUsernameInput || migrationStatus === 'loading'}
+             variant="secondary"
+             className="w-24"
+           >
+             {migrationStatus === 'loading' ? '找回中...' : '找回'}
+           </Button>
+        </div>
+        {migrationMessage && (
+          <p className={`text-sm mt-2 ${migrationStatus === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+            {migrationMessage}
+          </p>
+        )}
       </Card>
 
       <div className="fixed bottom-8 left-0 right-0 px-4 md:relative md:bottom-auto md:px-0">

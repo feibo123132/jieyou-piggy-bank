@@ -38,6 +38,36 @@ export const getDb = () => {
   return db;
 };
 
+export const sendVerificationCode = async (email: string) => {
+  if (!auth) return null;
+  try {
+    // Correct API: getVerification (not getVerificationCode)
+    const response = await auth.getVerification({ email });
+    return response; // Returns verificationInfo context
+  } catch (error) {
+    console.error('Failed to send verification code:', error);
+    throw error;
+  }
+};
+
+export const loginWithEmail = async (params: { email: string; code: string; verificationContext: any }) => {
+  if (!auth) return;
+  const { email, code, verificationContext } = params;
+  
+  try {
+    // Strict argument passing: Explicitly map verificationInfo
+    await auth.signInWithEmail({
+      email,
+      verificationCode: code,
+      verificationInfo: verificationContext // Do not spread context
+    });
+    return auth.currentUser;
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
+};
+
 export const saveUserState = async (username: string, fullState: any) => {
   if (!db || !auth) return;
   const safeUsername = username?.trim();
