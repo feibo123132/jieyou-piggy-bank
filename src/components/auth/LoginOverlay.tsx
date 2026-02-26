@@ -35,10 +35,11 @@ export const LoginOverlay: React.FC = () => {
         setStep('code');
         setCountdown(60);
       }
-    } catch (e: any) {
-      console.error("Send code failed:", e);
-      // Show specific error message from CloudBase
-      alert(`验证码发送失败: ${e.message || "请稍后重试"}`);
+    } catch (error: any) {
+      console.error("发送验证码完整错误:", error);
+      // 提取真实错误码和信息，展示给用户（以便截图排查）
+      const errorMsg = error.message || error.code || JSON.stringify(error);
+      alert(`发送失败! 真实原因: ${errorMsg}`);
     } finally {
       setIsLoading(false);
     }
