@@ -28,16 +28,24 @@ export const LoginOverlay: React.FC = () => {
       return;
     }
     setIsLoading(true);
-    const success = await sendAuthCode(email.trim());
-    setIsLoading(false);
     
-    if (success) {
-      setStep('code');
-      setCountdown(60);
-    } else {
-      alert("验证码发送失败，请稍后重试");
+    try {
+      const success = await sendAuthCode(email.trim());
+      if (success) {
+        setStep('code');
+        setCountdown(60);
+      }
+    } catch (e: any) {
+      console.error("Send code failed:", e);
+      // Show specific error message from CloudBase
+      alert(`验证码发送失败: ${e.message || "请稍后重试"}`);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Removed redundant handleSendCodeAction
+
 
   const handleLogin = async () => {
     if (!code.trim()) return;

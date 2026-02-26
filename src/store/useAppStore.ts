@@ -165,7 +165,7 @@ export const useAppStore = create<AppState>()(
           return false;
         } catch (e) {
           console.error("Send code error:", e);
-          return false;
+          throw e; // Re-throw to allow UI to handle error message
         }
       },
 

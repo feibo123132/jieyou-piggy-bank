@@ -180,10 +180,100 @@ const DashboardPage: React.FC = () => {
             </motion.p>
           )}
         </div>
-        <PiggyBankVisual 
-          currentAmount={piggyDisplayAmount} 
-          capacity={piggyCapacity} 
-        />
+
+        {/* Piggy Bank Collection Grid */}
+        <div className="flex flex-col items-center gap-y-4 max-w-2xl mx-auto px-4 mb-24">
+          
+          {/* Row 1: 30, 50, 100 */}
+          <div className="flex flex-wrap justify-center items-end gap-x-8">
+            {[30, 50, 100].map((level) => {
+              // Logic for visual state
+              let displayAmount = 0;
+              let isCurrent = false;
+              let isCompleted = false;
+
+              if (piggyCapacity > level) {
+                displayAmount = level; // Full
+                isCompleted = true;
+              } else if (piggyCapacity === level) {
+                displayAmount = piggyDisplayAmount; // Actual progress
+                isCurrent = true;
+              } else {
+                displayAmount = 0; // Locked
+              }
+
+              const opacity = isCurrent || isCompleted ? 1 : 0.3;
+              const filter = isCurrent || isCompleted ? 'none' : 'grayscale(100%)';
+
+              return (
+                <div key={level} className="flex flex-col items-center" style={{ opacity, filter }}>
+                  <div className="relative" style={{ 
+                    width: '120px', 
+                    height: '140px',
+                    transform: 'scale(0.8)',
+                    marginBottom: '-20px' 
+                  }}>
+                    <PiggyBankVisual 
+                      currentAmount={displayAmount} 
+                      capacity={level} 
+                    />
+                  </div>
+                  <div className="text-xs font-medium text-gray-500 mt-2">
+                     {isCompleted ? '已完成' : (isCurrent ? '进行中' : '未解锁')}
+                  </div>
+                  <div className="text-xs font-bold text-gray-400">
+                     Lv.{level}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Row 2: 200, 500 */}
+          <div className="flex flex-wrap justify-center items-end gap-x-24">
+            {[200, 500].map((level) => {
+              let displayAmount = 0;
+              let isCurrent = false;
+              let isCompleted = false;
+
+              if (piggyCapacity > level) {
+                displayAmount = level; // Full
+                isCompleted = true;
+              } else if (piggyCapacity === level) {
+                displayAmount = piggyDisplayAmount; // Actual progress
+                isCurrent = true;
+              } else {
+                displayAmount = 0; // Locked
+              }
+
+              const opacity = isCurrent || isCompleted ? 1 : 0.3;
+              const filter = isCurrent || isCompleted ? 'none' : 'grayscale(100%)';
+
+              return (
+                <div key={level} className="flex flex-col items-center" style={{ opacity, filter }}>
+                  <div className="relative" style={{ 
+                    width: level === 500 ? '160px' : '140px', 
+                    height: level === 500 ? '160px' : '150px',
+                    transform: 'scale(0.9)',
+                    marginBottom: '-20px' 
+                  }}>
+                    <PiggyBankVisual 
+                      currentAmount={displayAmount} 
+                      capacity={level} 
+                    />
+                  </div>
+                  <div className="text-xs font-medium text-gray-500 mt-2">
+                     {isCompleted ? '已完成' : (isCurrent ? '进行中' : '未解锁')}
+                  </div>
+                  <div className="text-xs font-bold text-gray-400">
+                     Lv.{level}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+        </div>
       </section>
 
       {/* Add Transaction Button */}

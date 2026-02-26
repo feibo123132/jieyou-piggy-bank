@@ -9,7 +9,8 @@ let db: any = null;
 if (envId) {
   try {
     app = cloudbase.init({
-      env: envId
+      env: envId,
+      persistence: 'local' // Force local persistence for better mobile compatibility
     });
     auth = app.auth();
     db = app.database();
@@ -44,8 +45,13 @@ export const sendVerificationCode = async (email: string) => {
     // Correct API: getVerification (not getVerificationCode)
     const response = await auth.getVerification({ email });
     return response; // Returns verificationInfo context
-  } catch (error) {
-    console.error('Failed to send verification code:', error);
+  } catch (error: any) {
+    console.error('Failed to send verification code:', {
+      error,
+      code: error.code,
+      message: error.message,
+      requestId: error.requestId
+    });
     throw error;
   }
 };
