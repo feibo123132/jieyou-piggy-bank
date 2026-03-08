@@ -6,18 +6,21 @@ import { useBudgetSummary } from '@/hooks/useBudgetSummary';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { FixedExpense } from '@/types';
+import { FixedExpense, VariableIncome } from '@/types';
 import { Reorder, AnimatePresence } from 'framer-motion';
-import { isSameMonth, getDaysInMonth } from 'date-fns';
+import { format, getDaysInMonth } from 'date-fns';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { settings, updateSettings, transactions, saveUserState, migrateFromOldAccount } = useAppStore();
   const { totalVariableSpent } = useBudgetSummary();
+  const currentMonthKey = format(new Date(), 'yyyy-MM');
+  const currentMonthIncomes = (settings.variableIncomes || []).filter(item => item.month === currentMonthKey);
   
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
   const [dailyBudgetInput, setDailyBudgetInput] = useState((settings.dailyBudget || 0).toString());
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(settings.fixedExpenses);
+  const [variableIncomes, setVariableIncomes] = useState<VariableIncome[]>(currentMonthIncomes);
   const [username, setUsername] = useState(settings.username || '');
   const [isSaved, setIsSaved] = useState(false);
   
@@ -34,12 +37,15 @@ const SettingsPage: React.FC = () => {
   // New expense form state
   const [newExpenseLabel, setNewExpenseLabel] = useState('');
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
+  const [newIncomeLabel, setNewIncomeLabel] = useState('');
+  const [newIncomeAmount, setNewIncomeAmount] = useState('');
 
   useEffect(() => {
     setMonthlyBudget(settings.monthlyBudget.toString());
     setDailyBudgetInput((settings.dailyBudget || 0).toString());
     setFixedExpenses(settings.fixedExpenses);
-  }, [settings]);
+    setVariableIncomes((settings.variableIncomes || []).filter(item => item.month === currentMonthKey));
+  }, [settings, currentMonthKey]);
 
   const handleAddExpense = () => {
     if (!newExpenseLabel || !newExpenseAmount) return;
@@ -55,8 +61,28 @@ const SettingsPage: React.FC = () => {
     setNewExpenseAmount('');
   };
 
+  const handleAddIncome = () => {
+    if (!newIncomeLabel || !newIncomeAmount) return;
+
+    const newIncome: VariableIncome = {
+      id: `${Date.now()}-income`,
+      label: newIncomeLabel,
+      amount: parseFloat(newIncomeAmount),
+      month: currentMonthKey,
+      createdAt: new Date().toISOString(),
+    };
+
+    setVariableIncomes([...variableIncomes, newIncome]);
+    setNewIncomeLabel('');
+    setNewIncomeAmount('');
+  };
+
   const handleRemoveExpense = (id: string) => {
     setFixedExpenses(fixedExpenses.filter(e => e.id !== id));
+  };
+
+  const handleRemoveIncome = (id: string) => {
+    setVariableIncomes(variableIncomes.filter(income => income.id !== id));
   };
 
   const handleStartEditing = (expense: FixedExpense) => {
@@ -95,7 +121,8 @@ const SettingsPage: React.FC = () => {
        setMigrationStatus('success');
        setMigrationMessage('✅ 找回成功！旧数据已合并到当前账号。');
        // Reload local state from store if needed, but store update should trigger re-render
-       setFixedExpenses(useAppStore.getState().settings.fixedExpenses); 
+       setFixedExpenses(useAppStore.getState().settings.fixedExpenses);
+       setVariableIncomes((useAppStore.getState().settings.variableIncomes || []).filter(item => item.month === currentMonthKey));
     } else {
        setMigrationStatus('error');
        setMigrationMessage(`❌ ${result.message || '找回失败'}`);
@@ -104,6 +131,7 @@ const SettingsPage: React.FC = () => {
 
   const handleSave = async () => {
     let finalFixedExpenses = [...fixedExpenses];
+    let finalVariableIncomes = [...variableIncomes];
 
     // "Vacuum Cleaner" Logic: Capture unsaved input
     if (newExpenseLabel && newExpenseAmount) {
@@ -120,10 +148,26 @@ const SettingsPage: React.FC = () => {
       setFixedExpenses(finalFixedExpenses); // Update local state view
     }
 
+    // Capture unsaved monthly income input
+    if (newIncomeLabel && newIncomeAmount) {
+      const vacuumedIncome: VariableIncome = {
+        id: `${Date.now()}-income`,
+        label: newIncomeLabel,
+        amount: parseFloat(newIncomeAmount),
+        month: currentMonthKey,
+        createdAt: new Date().toISOString(),
+      };
+      finalVariableIncomes = [...finalVariableIncomes, vacuumedIncome];
+      setNewIncomeLabel('');
+      setNewIncomeAmount('');
+      setVariableIncomes(finalVariableIncomes);
+    }
+
     updateSettings({
       monthlyBudget: parseFloat(monthlyBudget) || 0,
       dailyBudget: parseFloat(dailyBudgetInput) || 0,
       fixedExpenses: finalFixedExpenses,
+      variableIncomes: finalVariableIncomes,
       isOnboarded: true,
       username,
     });
@@ -137,6 +181,7 @@ const SettingsPage: React.FC = () => {
   };
 
   const totalFixed = fixedExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const totalVariableIncome = variableIncomes.reduce((sum, item) => sum + item.amount, 0);
   
   const formatCurrency = (amount: number) => {
     return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1);
@@ -193,6 +238,56 @@ const SettingsPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1 border-t border-gray-100 pt-3">
             本月实时剩余：<span className="text-green-600 font-bold">¥{formatCurrency(monthlyRemaining)}</span>
           </p>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-lg font-semibold mb-4 text-gray-700">本月不固定收入</h2>
+        <div className="space-y-4">
+          <div className="flex space-x-2">
+            <Input
+              placeholder="收入来源（如：兼职、红包）"
+              value={newIncomeLabel}
+              onChange={(e) => setNewIncomeLabel(e.target.value)}
+            />
+            <Input
+              type="number"
+              placeholder="金额"
+              value={newIncomeAmount}
+              onChange={(e) => setNewIncomeAmount(e.target.value)}
+            />
+            <Button onClick={handleAddIncome} variant="secondary" className="px-3">
+              <Plus size={20} />
+            </Button>
+          </div>
+
+          <div className="space-y-2 mt-4">
+            {variableIncomes.map((income) => (
+              <div
+                key={income.id}
+                className="flex justify-between items-center bg-gray-50 p-3 rounded-xl"
+              >
+                <span className="font-medium text-gray-700">{income.label}</span>
+                <div className="flex items-center space-x-3">
+                  <span className="text-gray-900">¥{formatCurrency(income.amount)}</span>
+                  <button
+                    onClick={() => handleRemoveIncome(income.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {variableIncomes.length === 0 && (
+              <p className="text-center text-gray-400 py-4 text-sm">本月暂无不固定收入</p>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 flex justify-between text-sm font-medium">
+            <span>本月非固定收入合计</span>
+            <span>¥{formatCurrency(totalVariableIncome)}</span>
+          </div>
         </div>
       </Card>
 

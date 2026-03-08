@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   monthlyBudget: 0,
   dailyBudget: 0, // Default to 0, means "not set" or "use fallback if any"
   fixedExpenses: [],
+  variableIncomes: [],
   isOnboarded: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -134,16 +135,19 @@ export const useAppStore = create<AppState>()(
             })
           };
         });
+        get().saveUserState();
       },
 
       updatePiggyBank: (updates) => {
         set((state) => ({
            piggyBank: { ...state.piggyBank, ...updates }
         }));
+        get().saveUserState();
       },
 
       setLastProcessedDate: (date) => {
          set({ lastProcessedDate: date });
+         get().saveUserState();
       },
 
       resetApp: () => set({
@@ -176,13 +180,19 @@ export const useAppStore = create<AppState>()(
         await loginWithEmail({ email, code, verificationContext: context });
         
         // Login success, set email as username
+        const normalizedEmail = email.trim();
         set((state) => ({ 
-          settings: { ...state.settings, username: email },
+          settings: { ...state.settings, username: normalizedEmail },
           verificationContext: null 
         }));
         
         // Trigger pull
-        await get().pullFromCloud(email);
+        const pullResult = await get().pullFromCloud(normalizedEmail);
+        if (pullResult.status === 'not_found') {
+          // First-time cloud user: unlock local usage and create an initial cloud snapshot
+          set({ isInitialized: true, isLocked: false });
+          await get().saveUserState();
+        }
       },
 
       saveUserState: async () => {
@@ -199,16 +209,17 @@ export const useAppStore = create<AppState>()(
            updatedAt: new Date().toISOString() // Explicitly set save time
         };
 
-        if (!username || !isInitialized) {
+        const safeUsername = username?.trim();
+        if (!safeUsername || !isInitialized) {
           console.error('[SAVE REJECTED] 拒绝保存：未登录或未初始化。', { username, isInitialized });
           return;
         }
-        console.log('[SAVE STARTING] 准备将以下数据推送到云端...', { username, fullState });
+        console.log('[SAVE STARTING] 准备将以下数据推送到云端...', { username: safeUsername, fullState });
         
         try {
           const db = getDb();
           const collection = db.collection('transactions');
-          await collection.doc(username).set(fullState);
+          await collection.doc(safeUsername).set(fullState);
           console.log('[SAVE SUCCESS] ✅ 数据已成功保存到云端！');
         } catch (error) {
           console.error('[SAVE FAILED] ❌ 保存到云端失败！', error);
@@ -220,7 +231,7 @@ export const useAppStore = create<AppState>()(
       // Here we use a simple SHA-256 via Web Crypto API.
       
       pullFromCloud: async (targetUsername?: string) => {
-        const username = targetUsername || get().settings.username;
+        const username = (targetUsername || get().settings.username || '').trim();
         if (!username) {
              console.warn('[PULL SKIPPED] 无用户名，跳过拉取');
              return { status: 'error' };
@@ -231,7 +242,10 @@ export const useAppStore = create<AppState>()(
           await loginAnonymous();
           const db = getDb();
           const cloudDoc = await db.collection('transactions').doc(username).get();
-          const cloudData = (cloudDoc.data && cloudDoc.data.length > 0) ? cloudDoc.data[0] : null;
+          const rawData = cloudDoc?.data;
+          const cloudData = Array.isArray(rawData)
+            ? (rawData.length > 0 ? rawData[0] : null)
+            : (rawData || null);
 
           if (cloudData) {
             console.log('[PULL FOUND] ☁️ 在云端找到数据');
@@ -257,6 +271,12 @@ export const useAppStore = create<AppState>()(
             }
           } else {
             console.log('[PULL EMPTY] ☁️ 云端无数据，准备新注册...');
+            // Critical: mark initialized here, otherwise all later saves stay blocked.
+            set((state) => ({
+              settings: { ...state.settings, username },
+              isInitialized: true,
+              isLocked: false
+            }));
             return { status: 'not_found' };
           }
         } catch (error) {
@@ -286,13 +306,16 @@ export const useAppStore = create<AppState>()(
           const db = getDb();
           // Try to read the old document
           const oldDoc = await db.collection('transactions').doc(oldUsername).get();
-          
-          if (!oldDoc.data || oldDoc.data.length === 0) {
+
+          const oldRawData = oldDoc?.data;
+          const oldData = Array.isArray(oldRawData)
+            ? (oldRawData.length > 0 ? oldRawData[0] : null)
+            : (oldRawData || null);
+
+          if (!oldData) {
             console.warn(`[MIGRATE] Old account ${oldUsername} not found.`);
             return { status: 'not_found', message: '未找到旧账号数据' };
           }
-
-          const oldData = oldDoc.data[0];
           
           // Basic validation of data structure
           if (!oldData.transactions && !oldData.piggyBank) {
@@ -339,6 +362,9 @@ export const useAppStore = create<AppState>()(
                 monthlyBudget: state.settings.monthlyBudget || oldData.settings?.monthlyBudget || 0,
                 dailyBudget: state.settings.dailyBudget || oldData.settings?.dailyBudget || 0,
                 fixedExpenses: state.settings.fixedExpenses.length === 0 ? (oldData.settings?.fixedExpenses || []) : state.settings.fixedExpenses,
+                variableIncomes: (state.settings.variableIncomes && state.settings.variableIncomes.length > 0)
+                  ? state.settings.variableIncomes
+                  : (oldData.settings?.variableIncomes || []),
                 // Do not overwrite username/passwordHash
               },
               lastProcessedDate: oldData.lastProcessedDate > state.lastProcessedDate ? oldData.lastProcessedDate : state.lastProcessedDate

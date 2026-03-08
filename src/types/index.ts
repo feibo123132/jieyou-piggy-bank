@@ -4,10 +4,19 @@ export interface FixedExpense {
   label: string;
 }
 
+export interface VariableIncome {
+  id: string;
+  amount: number;
+  label: string;
+  month: string; // YYYY-MM
+  createdAt: string;
+}
+
 export interface UserSettings {
   monthlyBudget: number;
   dailyBudget: number; // Manually set daily limit
   fixedExpenses: FixedExpense[];
+  variableIncomes?: VariableIncome[]; // Monthly non-fixed incomes
   isOnboarded: boolean; // Flag to check if user has completed initial setup
   createdAt: string;
   updatedAt: string;

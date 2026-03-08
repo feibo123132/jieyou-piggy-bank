@@ -10,7 +10,7 @@ import {
   getDaysInMonth
 } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Trash2, Check, Zap, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Trash2, Check, Zap, ChevronDown, Wallet } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card } from '@/components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,7 +39,13 @@ const CalendarPage: React.FC = () => {
 
   // Stats for the month
   const monthTransactions = transactions.filter(t => isSameMonth(new Date(t.date), currentDate) && !t.deletedAt);
-  const totalSpent = monthTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalVariableSpent = monthTransactions
+    .filter(t => !t.tags.includes('fixed'))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const currentMonthKey = format(currentDate, 'yyyy-MM');
+  const totalVariableIncome = (settings.variableIncomes || [])
+    .filter(income => income.month === currentMonthKey)
+    .reduce((sum, income) => sum + income.amount, 0);
   
   const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
   
@@ -195,13 +201,21 @@ const CalendarPage: React.FC = () => {
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         <Card className="p-3 bg-orange-50 border-orange-100 flex flex-col justify-between">
           <div className="flex items-center space-x-1.5 text-orange-600 mb-1">
             <TrendingUp size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-wider">本月支出</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">本月非固定支出</span>
           </div>
-          <p className="text-xl font-bold text-gray-900">¥{formatCurrency(totalSpent)}</p>
+          <p className="text-xl font-bold text-gray-900">¥{formatCurrency(totalVariableSpent)}</p>
+        </Card>
+
+        <Card className="p-3 bg-sky-50 border-sky-100 flex flex-col justify-between">
+          <div className="flex items-center space-x-1.5 text-sky-600 mb-1">
+            <Wallet size={14} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">本月非固定收入</span>
+          </div>
+          <p className="text-xl font-bold text-gray-900">¥{formatCurrency(totalVariableIncome)}</p>
         </Card>
 
         <Card className={`p-3 border-opacity-50 flex flex-col justify-between ${

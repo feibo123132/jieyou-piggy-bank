@@ -1,8 +1,10 @@
 import { useAppStore } from '@/store/useAppStore';
 import { eachDayOfInterval, startOfMonth, endOfMonth, isFuture, format } from 'date-fns';
 
+const PIGGY_LEVELS = [30, 50, 100, 200, 500] as const;
+
 export const usePiggyBankLogic = () => {
-  const { transactions, settings, piggyBank } = useAppStore();
+  const { transactions, settings } = useAppStore();
 
   const calculateTotalSavings = () => {
     // If we have no budget set, savings are 0
@@ -58,17 +60,37 @@ export const usePiggyBankLogic = () => {
     return Math.max(0, totalSavings); 
   };
 
-  const currentAmount = calculateTotalSavings();
-  
-  // Calculate percentage for visual
-  // Capacity Level is an arbitrary goal (e.g. 100, 500, 1000)
-  // If capacity is not set or 0, default to 100 to avoid division by zero
-  const capacity = piggyBank.capacityLevel || 100;
+  const totalSavedThisMonth = calculateTotalSavings();
+
+  // Determine the current piggy bank level from this month's savings.
+  // Upgrade is always sequential: 30 -> 50 -> 100 -> 200 -> 500.
+  let capacity: number = PIGGY_LEVELS[0];
+  let currentAmount: number = totalSavedThisMonth;
+
+  for (let i = 0; i < PIGGY_LEVELS.length; i++) {
+    const level = PIGGY_LEVELS[i];
+    const isLastLevel = i === PIGGY_LEVELS.length - 1;
+
+    capacity = level;
+
+    if (currentAmount < level) {
+      break;
+    }
+
+    if (isLastLevel) {
+      currentAmount = level;
+      break;
+    }
+
+    currentAmount -= level;
+  }
+
   const percentage = Math.min(100, Math.max(0, (currentAmount / capacity) * 100));
 
   return {
     currentAmount,
     percentage,
-    capacity
+    capacity,
+    totalSavedThisMonth,
   };
 };

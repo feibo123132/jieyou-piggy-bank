@@ -8,22 +8,24 @@ let db: any = null;
 
 if (envId) {
   try {
+    console.log('[TCB] 开始初始化...');
     app = cloudbase.init({
       env: envId,
       persistence: 'local' // Force local persistence for better mobile compatibility
     });
     auth = app.auth();
     db = app.database();
+    console.log('[TCB] 初始化完成');
   } catch (e) {
-    console.error('CloudBase init failed:', e);
+    console.error('[TCB Fatal] 初始化失败:', e);
   }
 } else {
-  console.warn('VITE_TCB_ENV_ID is not set. Cloud sync will be disabled.');
+  console.warn('[TCB] VITE_TCB_ENV_ID is not set. Cloud sync will be disabled.');
 }
 
 export const loginAnonymous = async () => {
   if (!auth) {
-    console.warn('CloudBase not initialized (missing env ID?)');
+    console.warn('[TCB] CloudBase not initialized (missing env ID?)');
     return null;
   }
   
@@ -35,25 +37,35 @@ export const loginAnonymous = async () => {
 };
 
 export const getDb = () => {
-  if (!db) throw new Error('CloudBase not initialized');
+  if (!db) throw new Error('[TCB] CloudBase not initialized');
   return db;
 };
 
 export const sendVerificationCode = async (email: string) => {
-  if (!auth) return null;
-  try {
-    // Correct API: getVerification (not getVerificationCode)
-    const response = await auth.getVerification({ email });
-    return response; // Returns verificationInfo context
-  } catch (error: any) {
-    console.error('Failed to send verification code:', {
-      error,
-      code: error.code,
-      message: error.message,
-      requestId: error.requestId
-    });
-    throw error;
-  }
+  console.log('[TCB] 尝试发送验证码:', email); 
+   
+  if (!auth) { 
+    const msg = '[TCB Fatal] Auth 对象未初始化！请检查 SDK 配置。'; 
+    console.error(msg); 
+    throw new Error(msg); 
+  } 
+ 
+  // 设置 10 秒超时竞速 
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('请求超时，请检查网络或刷新重试')), 10000) 
+  ); 
+ 
+  try { 
+    const result = await Promise.race([ 
+      auth.getVerification({ email }), 
+      timeoutPromise 
+    ]); 
+    console.log('[TCB] 发送成功:', result); 
+    return result; // Returns verificationInfo context
+  } catch (error: any) { 
+    console.error('[TCB] 发送失败详情:', error); 
+    throw error; // 抛出给 UI 层显示 Alert 
+  } 
 };
 
 export const loginWithEmail = async (params: { email: string; code: string; verificationContext: any }) => {
