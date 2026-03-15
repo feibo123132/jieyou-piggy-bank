@@ -11,6 +11,7 @@ export const usePiggyBankLogic = () => {
     if (!settings.monthlyBudget) return 0;
 
     const today = new Date();
+    const currentMonthKey = format(today, 'yyyy-MM');
     // Start from when the user created the account or a fixed reasonable start date
     // For now, let's calculate based on the current month's performance as per the "Total Saved" logic
     // OR, if "Piggy Bank" represents ALL-TIME savings, we need to iterate differently.
@@ -51,6 +52,13 @@ export const usePiggyBankLogic = () => {
       const dailySavings = dailyBudget - dayConsumed;
       totalSavings += dailySavings;
     });
+
+    // Monthly non-fixed incomes are also deposited into the piggy bank.
+    const totalVariableIncome = (settings.variableIncomes || [])
+      .filter(income => income.month === currentMonthKey)
+      .reduce((sum, income) => sum + Math.max(0, income.amount || 0), 0);
+
+    totalSavings += totalVariableIncome;
 
     // Piggy bank should accumulate savings, but typically we don't subtract overspending from the "bank" 
     // unless the logic implies "debt". 

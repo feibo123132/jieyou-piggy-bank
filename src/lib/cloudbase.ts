@@ -8,16 +8,16 @@ let db: any = null;
 
 if (envId) {
   try {
-    console.log('[TCB] 开始初始化...');
+    console.log('[TCB] Initializing...');
     app = cloudbase.init({
       env: envId,
-      persistence: 'local' // Force local persistence for better mobile compatibility
+      persistence: 'local' // Keep login/session data locally for better mobile compatibility.
     });
     auth = app.auth();
     db = app.database();
-    console.log('[TCB] 初始化完成');
+    console.log('[TCB] Initialization complete.');
   } catch (e) {
-    console.error('[TCB Fatal] 初始化失败:', e);
+    console.error('[TCB Fatal] Initialization failed:', e);
   }
 } else {
   console.warn('[TCB] VITE_TCB_ENV_ID is not set. Cloud sync will be disabled.');
@@ -28,12 +28,49 @@ export const loginAnonymous = async () => {
     console.warn('[TCB] CloudBase not initialized (missing env ID?)');
     return null;
   }
-  
+
   const loginState = await auth.getLoginState();
   if (!loginState) {
     await auth.anonymousAuthProvider().signIn();
   }
   return auth.currentUser;
+};
+
+const isAnonymousLoginState = (loginState: any): boolean => {
+  if (!loginState) return true;
+  if (typeof loginState.isAnonymous === 'boolean') return loginState.isAnonymous;
+  if (typeof loginState?.user?.isAnonymous === 'boolean') return loginState.user.isAnonymous;
+
+  const loginType = String(
+    loginState.loginType ||
+    loginState.type ||
+    loginState?.user?.loginType ||
+    ''
+  ).toLowerCase();
+
+  return loginType.includes('anonymous');
+};
+
+export const hasAuthenticatedSession = async (expectedEmail?: string) => {
+  if (!auth) return false;
+  try {
+    const loginState = await auth.getLoginState();
+    if (!loginState) return false;
+    if (isAnonymousLoginState(loginState)) return false;
+
+    const stateEmail = String(loginState?.user?.email || '').trim().toLowerCase();
+    if (expectedEmail) {
+      const target = expectedEmail.trim().toLowerCase();
+      // If SDK does not expose email for this session, force explicit re-login.
+      if (!stateEmail) return false;
+      return stateEmail === target;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[TCB] Failed to check login state:', error);
+    return false;
+  }
 };
 
 export const getDb = () => {
@@ -42,42 +79,40 @@ export const getDb = () => {
 };
 
 export const sendVerificationCode = async (email: string) => {
-  console.log('[TCB] 尝试发送验证码:', email); 
-   
-  if (!auth) { 
-    const msg = '[TCB Fatal] Auth 对象未初始化！请检查 SDK 配置。'; 
-    console.error(msg); 
-    throw new Error(msg); 
-  } 
- 
-  // 设置 10 秒超时竞速 
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('请求超时，请检查网络或刷新重试')), 10000) 
-  ); 
- 
-  try { 
-    const result = await Promise.race([ 
-      auth.getVerification({ email }), 
-      timeoutPromise 
-    ]); 
-    console.log('[TCB] 发送成功:', result); 
-    return result; // Returns verificationInfo context
-  } catch (error: any) { 
-    console.error('[TCB] 发送失败详情:', error); 
-    throw error; // 抛出给 UI 层显示 Alert 
-  } 
+  console.log('[TCB] Sending verification code:', email);
+
+  if (!auth) {
+    const msg = '[TCB Fatal] Auth is not initialized. Please check SDK config.';
+    console.error(msg);
+    throw new Error(msg);
+  }
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Request timed out, please check network and retry.')), 10000)
+  );
+
+  try {
+    const result = await Promise.race([
+      auth.getVerification({ email }),
+      timeoutPromise
+    ]);
+    console.log('[TCB] Verification code sent successfully.', result);
+    return result; // verificationInfo context
+  } catch (error: any) {
+    console.error('[TCB] Failed to send verification code:', error);
+    throw error;
+  }
 };
 
 export const loginWithEmail = async (params: { email: string; code: string; verificationContext: any }) => {
   if (!auth) return;
   const { email, code, verificationContext } = params;
-  
+
   try {
-    // Strict argument passing: Explicitly map verificationInfo
     await auth.signInWithEmail({
       email,
       verificationCode: code,
-      verificationInfo: verificationContext // Do not spread context
+      verificationInfo: verificationContext
     });
     return auth.currentUser;
   } catch (error) {
@@ -92,9 +127,7 @@ export const saveUserState = async (username: string, fullState: any) => {
   if (!safeUsername) return;
 
   try {
-    const collection = db.collection('transactions');
-    // Use username as Document ID for full state sync
-    await collection.doc(safeUsername).set({
+    await db.collection('transactions').doc(safeUsername).set({
       ...fullState,
       updatedAt: new Date().toISOString()
     });
@@ -110,16 +143,10 @@ export const loadUserState = async (username: string) => {
   if (!safeUsername) return null;
 
   try {
-    const collection = db.collection('transactions');
-    const res = await collection.doc(safeUsername).get();
-    
+    const res = await db.collection('transactions').doc(safeUsername).get();
     if (res.data && res.data.length > 0) {
-       // CloudBase get() returns array even for doc() query sometimes, or check res.data object
-       // SDK doc says doc().get() returns { data: Object, ... } if exists
-       // But let's be safe.
-       return res.data; 
+      return res.data;
     }
-    // If doc not found
     return null;
   } catch (error) {
     console.error(`Failed to load user state from cloud for user [${safeUsername}]:`, error);

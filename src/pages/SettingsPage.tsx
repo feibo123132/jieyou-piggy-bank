@@ -33,6 +33,9 @@ const SettingsPage: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editAmount, setEditAmount] = useState('');
+  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null);
+  const [editIncomeLabel, setEditIncomeLabel] = useState('');
+  const [editIncomeAmount, setEditIncomeAmount] = useState('');
 
   // New expense form state
   const [newExpenseLabel, setNewExpenseLabel] = useState('');
@@ -83,6 +86,31 @@ const SettingsPage: React.FC = () => {
 
   const handleRemoveIncome = (id: string) => {
     setVariableIncomes(variableIncomes.filter(income => income.id !== id));
+  };
+
+  const handleStartEditingIncome = (income: VariableIncome) => {
+    setEditingIncomeId(income.id);
+    setEditIncomeLabel(income.label);
+    setEditIncomeAmount(income.amount.toString());
+  };
+
+  const handleSaveEditingIncome = () => {
+    if (!editingIncomeId || !editIncomeLabel || !editIncomeAmount) return;
+
+    setVariableIncomes(variableIncomes.map(income =>
+      income.id === editingIncomeId
+        ? { ...income, label: editIncomeLabel, amount: parseFloat(editIncomeAmount) }
+        : income
+    ));
+    setEditingIncomeId(null);
+    setEditIncomeLabel('');
+    setEditIncomeAmount('');
+  };
+
+  const handleCancelEditingIncome = () => {
+    setEditingIncomeId(null);
+    setEditIncomeLabel('');
+    setEditIncomeAmount('');
   };
 
   const handleStartEditing = (expense: FixedExpense) => {
@@ -267,16 +295,49 @@ const SettingsPage: React.FC = () => {
                 key={income.id}
                 className="flex justify-between items-center bg-gray-50 p-3 rounded-xl"
               >
-                <span className="font-medium text-gray-700">{income.label}</span>
-                <div className="flex items-center space-x-3">
-                  <span className="text-gray-900">¥{formatCurrency(income.amount)}</span>
-                  <button
-                    onClick={() => handleRemoveIncome(income.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
+                {editingIncomeId === income.id ? (
+                  <div className="flex w-full space-x-2 items-center">
+                    <Input
+                      value={editIncomeLabel}
+                      onChange={(e) => setEditIncomeLabel(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    <Input
+                      type="number"
+                      value={editIncomeAmount}
+                      onChange={(e) => setEditIncomeAmount(e.target.value)}
+                      className="h-8 w-24 text-sm"
+                    />
+                    <div className="flex space-x-1">
+                      <button onClick={handleSaveEditingIncome} className="p-1 text-green-600 hover:bg-green-100 rounded">
+                        <Check size={16} />
+                      </button>
+                      <button onClick={handleCancelEditingIncome} className="p-1 text-red-500 hover:bg-red-100 rounded">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <span className="font-medium text-gray-700">{income.label}</span>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-gray-900">¥{formatCurrency(income.amount)}</span>
+                      <button
+                        onClick={() => handleStartEditingIncome(income)}
+                        className="text-gray-400 hover:text-blue-500 transition-colors"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveIncome(income.id)}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
             {variableIncomes.length === 0 && (

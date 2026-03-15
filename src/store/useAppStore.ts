@@ -3,11 +3,22 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserSettings, Transaction, PiggyBankState } from '@/types';
 import { loginAnonymous, getDb, sendVerificationCode, loginWithEmail } from '@/lib/cloudbase';
 
+const nowIso = () => new Date().toISOString();
+const toMillis = (value?: string) => {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+let cloudSaveQueue: Promise<void> = Promise.resolve();
+
 interface AppState {
   settings: UserSettings;
   transactions: Transaction[];
   piggyBank: PiggyBankState;
   lastProcessedDate: string;
+  lastLocalUpdateAt: string;
+  hasUnsyncedChanges: boolean;
 
   // Auth State
   verificationContext: any;
@@ -34,6 +45,7 @@ interface AppState {
   migrateFromOldAccount: (oldUsername: string) => Promise<{ status: 'success' | 'not_found' | 'error', message?: string }>;
   verifyAndLoadData: (password: string, pendingData: any) => Promise<boolean>;
   saveUserState: () => Promise<void>;
+  requireLogin: () => void;
   
   // State Flags
   isInitialized: boolean;
@@ -65,18 +77,22 @@ export const useAppStore = create<AppState>()(
       transactions: [],
       piggyBank: DEFAULT_PIGGY_BANK,
       lastProcessedDate: new Date().toISOString().split('T')[0],
+      lastLocalUpdateAt: nowIso(),
+      hasUnsyncedChanges: false,
       isInitialized: false,
       isLocked: true, // Default to locked
       verificationContext: null,
 
       setSettings: (settings) => {
-        set({ settings });
+        set({ settings, lastLocalUpdateAt: nowIso(), hasUnsyncedChanges: true });
         get().saveUserState();
       },
       
       updateSettings: (updates) => {
         set((state) => ({
-          settings: { ...state.settings, ...updates, updatedAt: new Date().toISOString() }
+          settings: { ...state.settings, ...updates, updatedAt: nowIso() },
+          lastLocalUpdateAt: nowIso(),
+          hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
@@ -84,7 +100,11 @@ export const useAppStore = create<AppState>()(
       addTransaction: (transaction) => {
         set((state) => {
           const newTransactions = [...state.transactions, transaction];
-          return { transactions: newTransactions };
+          return {
+            transactions: newTransactions,
+            lastLocalUpdateAt: nowIso(),
+            hasUnsyncedChanges: true
+          };
         });
         get().saveUserState();
       },
@@ -93,7 +113,9 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           transactions: state.transactions.map(t => 
             t.id === transaction.id ? transaction : t
-          )
+          ),
+          lastLocalUpdateAt: nowIso(),
+          hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
@@ -102,7 +124,9 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           transactions: state.transactions.map(t => 
             t.id === id ? { ...t, deletedAt: new Date().toISOString() } : t
-          )
+          ),
+          lastLocalUpdateAt: nowIso(),
+          hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
@@ -111,14 +135,18 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           transactions: state.transactions.map(t => 
             t.id === id ? { ...t, deletedAt: undefined } : t
-          )
+          ),
+          lastLocalUpdateAt: nowIso(),
+          hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
 
       permanentlyDeleteTransaction: (id) => {
         set((state) => ({
-          transactions: state.transactions.filter(t => t.id !== id)
+          transactions: state.transactions.filter(t => t.id !== id),
+          lastLocalUpdateAt: nowIso(),
+          hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
@@ -132,7 +160,9 @@ export const useAppStore = create<AppState>()(
             transactions: state.transactions.filter(t => {
               if (!t.deletedAt) return true;
               return new Date(t.deletedAt) > sevenDaysAgo;
-            })
+            }),
+            lastLocalUpdateAt: nowIso(),
+            hasUnsyncedChanges: true
           };
         });
         get().saveUserState();
@@ -140,13 +170,15 @@ export const useAppStore = create<AppState>()(
 
       updatePiggyBank: (updates) => {
         set((state) => ({
-           piggyBank: { ...state.piggyBank, ...updates }
+           piggyBank: { ...state.piggyBank, ...updates },
+           lastLocalUpdateAt: nowIso(),
+           hasUnsyncedChanges: true
         }));
         get().saveUserState();
       },
 
       setLastProcessedDate: (date) => {
-         set({ lastProcessedDate: date });
+         set({ lastProcessedDate: date, lastLocalUpdateAt: nowIso(), hasUnsyncedChanges: true });
          get().saveUserState();
       },
 
@@ -155,6 +187,8 @@ export const useAppStore = create<AppState>()(
         transactions: [],
         piggyBank: DEFAULT_PIGGY_BANK,
         lastProcessedDate: new Date().toISOString().split('T')[0],
+        lastLocalUpdateAt: nowIso(),
+        hasUnsyncedChanges: false,
         isInitialized: false,
         isLocked: true,
       }),
@@ -175,7 +209,7 @@ export const useAppStore = create<AppState>()(
 
       loginAndSync: async (email: string, code: string) => {
         const context = get().verificationContext;
-        if (!context) throw new Error("请先获取验证码");
+        if (!context) throw new Error('Please request a verification code first.');
         
         await loginWithEmail({ email, code, verificationContext: context });
         
@@ -196,34 +230,52 @@ export const useAppStore = create<AppState>()(
       },
 
       saveUserState: async () => {
-        const state = get();
-        const { username } = state.settings;
-        const { isInitialized } = state;
+        cloudSaveQueue = cloudSaveQueue
+          .catch(() => undefined)
+          .then(async () => {
+            const state = get();
+            const safeUsername = state.settings.username?.trim();
 
-        // Construct full state explicitly, excluding helper functions
-        const fullState = {
-           settings: state.settings,
-           transactions: state.transactions,
-           piggyBank: state.piggyBank,
-           lastProcessedDate: state.lastProcessedDate,
-           updatedAt: new Date().toISOString() // Explicitly set save time
-        };
+            if (!safeUsername || !state.isInitialized) {
+              console.error('[SAVE REJECTED] Missing username or app not initialized.', {
+                username: state.settings.username,
+                isInitialized: state.isInitialized
+              });
+              return;
+            }
 
-        const safeUsername = username?.trim();
-        if (!safeUsername || !isInitialized) {
-          console.error('[SAVE REJECTED] 拒绝保存：未登录或未初始化。', { username, isInitialized });
-          return;
-        }
-        console.log('[SAVE STARTING] 准备将以下数据推送到云端...', { username: safeUsername, fullState });
-        
-        try {
-          const db = getDb();
-          const collection = db.collection('transactions');
-          await collection.doc(safeUsername).set(fullState);
-          console.log('[SAVE SUCCESS] ✅ 数据已成功保存到云端！');
-        } catch (error) {
-          console.error('[SAVE FAILED] ❌ 保存到云端失败！', error);
-        }
+            const snapshotUpdatedAt = state.lastLocalUpdateAt || nowIso();
+            const snapshotUpdatedAtMs = toMillis(snapshotUpdatedAt);
+            const fullState = {
+              settings: state.settings,
+              transactions: state.transactions,
+              piggyBank: state.piggyBank,
+              lastProcessedDate: state.lastProcessedDate,
+              updatedAt: snapshotUpdatedAt
+            };
+
+            console.log('[SAVE STARTING] Uploading queued snapshot...', { username: safeUsername, updatedAt: snapshotUpdatedAt });
+
+            try {
+              const db = getDb();
+              await db.collection('transactions').doc(safeUsername).set(fullState);
+
+              set((current) => {
+                // Newer local edits appeared while this request was in flight.
+                if (toMillis(current.lastLocalUpdateAt) > snapshotUpdatedAtMs) {
+                  return {};
+                }
+                return { hasUnsyncedChanges: false };
+              });
+
+              console.log('[SAVE SUCCESS] Snapshot saved to cloud.');
+            } catch (error) {
+              set({ hasUnsyncedChanges: true });
+              console.error('[SAVE FAILED] Failed to save snapshot to cloud.', error);
+            }
+          });
+
+        return cloudSaveQueue;
       },
 
       // Helper to hash password
@@ -233,11 +285,11 @@ export const useAppStore = create<AppState>()(
       pullFromCloud: async (targetUsername?: string) => {
         const username = (targetUsername || get().settings.username || '').trim();
         if (!username) {
-             console.warn('[PULL SKIPPED] 无用户名，跳过拉取');
+             console.warn('[PULL SKIPPED] Missing username.');
              return { status: 'error' };
         }
 
-        console.log(`[PULL STARTING] 开始为用户 ${username} 拉取云端数据...`);
+        console.log(`[PULL STARTING] Pulling data for ${username}...`);
         try {
           await loginAnonymous();
           const db = getDb();
@@ -248,29 +300,48 @@ export const useAppStore = create<AppState>()(
             : (rawData || null);
 
           if (cloudData) {
-            console.log('[PULL FOUND] ☁️ 在云端找到数据');
+            console.log('[PULL FOUND] Cloud document exists.');
             
             // Check if password protection is enabled
             if (cloudData.settings && cloudData.settings.passwordHash) {
-               console.log('[AUTH REQUIRED] 🔒 账号受密码保护，等待验证...');
+               console.log('[AUTH REQUIRED] Password verification required.');
                // Return the data to the caller (UI) to handle verification
                // Do NOT set state yet
                return { status: 'auth_required', data: cloudData };
             } else {
-               // Legacy account or no password - load immediately
-               console.log('[AUTH SKIP] 🔓 无密码，直接加载...');
-               set({ 
-                  settings: cloudData.settings,
-                  transactions: cloudData.transactions,
-                  piggyBank: cloudData.piggyBank,
-                  lastProcessedDate: cloudData.lastProcessedDate,
-                  isInitialized: true,
-                  isLocked: false 
+               const currentState = get();
+               const localUpdatedAtMs = toMillis(currentState.lastLocalUpdateAt || currentState.settings.updatedAt);
+               const cloudUpdatedAt = cloudData.updatedAt || cloudData.settings?.updatedAt;
+               const cloudUpdatedAtMs = toMillis(cloudUpdatedAt);
+               const hasLocalData = currentState.transactions.length > 0 || currentState.settings.isOnboarded;
+               const shouldKeepLocal = currentState.hasUnsyncedChanges && hasLocalData && localUpdatedAtMs >= cloudUpdatedAtMs;
+
+               if (shouldKeepLocal) {
+                 console.warn('[PULL MERGE] Local unsynced data is newer. Keep local and push to cloud.');
+                 set({
+                   settings: { ...currentState.settings, username },
+                   isInitialized: true,
+                   isLocked: false
+                 });
+                 await get().saveUserState();
+                 return { status: 'success' };
+               }
+
+               // Cloud data is newer/equal, safe to load.
+               set({
+                 settings: cloudData.settings,
+                 transactions: cloudData.transactions,
+                 piggyBank: cloudData.piggyBank,
+                 lastProcessedDate: cloudData.lastProcessedDate,
+                 lastLocalUpdateAt: cloudUpdatedAt || nowIso(),
+                 hasUnsyncedChanges: false,
+                 isInitialized: true,
+                 isLocked: false
                });
                return { status: 'success' };
             }
           } else {
-            console.log('[PULL EMPTY] ☁️ 云端无数据，准备新注册...');
+            console.log('[PULL EMPTY] No cloud data found.');
             // Critical: mark initialized here, otherwise all later saves stay blocked.
             set((state) => ({
               settings: { ...state.settings, username },
@@ -280,10 +351,9 @@ export const useAppStore = create<AppState>()(
             return { status: 'not_found' };
           }
         } catch (error) {
-          console.error('[PULL FAILED] ❌ 从云端拉取数据失败！', error);
-          // 失败时也要初始化，防止应用卡死，并允许用户离线使用
-          set({ isInitialized: true, isLocked: false }); // Allow offline access if sync fails? Or lock? 
-          // For now, let's assume offline access is okay but warn user.
+          console.error('[PULL FAILED] Failed to pull cloud data.', error);
+          // Keep locked on failure so the app does not continue writing offline data silently.
+          set({ isInitialized: false, isLocked: true });
           
           if (targetUsername) {
              set((state) => ({
@@ -294,10 +364,14 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      requireLogin: () => {
+        set({ isLocked: true, isInitialized: false });
+      },
+
       migrateFromOldAccount: async (oldUsername: string) => {
         const currentUsername = get().settings.username;
         if (!currentUsername) {
-          return { status: 'error', message: '请先登录新账号后再进行数据迁移' };
+          return { status: 'error', message: 'Please log in to the new account before migrating data.' };
         }
         
         console.log(`[MIGRATE] Attempting to migrate from ${oldUsername} to ${currentUsername}...`);
@@ -314,20 +388,16 @@ export const useAppStore = create<AppState>()(
 
           if (!oldData) {
             console.warn(`[MIGRATE] Old account ${oldUsername} not found.`);
-            return { status: 'not_found', message: '未找到旧账号数据' };
+            return { status: 'not_found', message: 'Old account data was not found.' };
           }
           
           // Basic validation of data structure
           if (!oldData.transactions && !oldData.piggyBank) {
-             return { status: 'error', message: '旧账号数据格式不正确' };
+             return { status: 'error', message: 'Old account data format is invalid.' };
           }
 
           // Check for password on old account
           if (oldData.settings?.passwordHash) {
-            // For now, we might need to ask for password, but let's assume if they know the ID they are the owner
-            // Or maybe prompt for password? 
-            // Simplified: warn user or require password verification logic here if needed.
-            // For this implementation, we will proceed but log it.
             console.log('[MIGRATE] Old account has password protection.');
           }
 
@@ -343,20 +413,14 @@ export const useAppStore = create<AppState>()(
             // Deduplicate by ID
             const uniqueTransactions = Array.from(new Map(mergedTransactions.map(item => [item.id, item])).values());
             
-            // Piggy Bank: take the larger amount or sum? 
-            // Let's take the max of current vs old to be safe, or just add?
-            // If user starts fresh, current is 0. Old is X. Result X.
-            // If user has some data, adding might double count.
-            // Let's use the old data if current is default/empty.
+            // Piggy Bank: use old data only if current looks empty.
             const newPiggyBank = state.piggyBank.currentAmount === 0 && state.piggyBank.totalSavedHistory === 0 
               ? oldData.piggyBank 
-              : state.piggyBank; // If current has data, keep current. 
-              // TODO: Smarter merge?
+              : state.piggyBank;
 
             return {
               transactions: uniqueTransactions,
               piggyBank: newPiggyBank || state.piggyBank,
-              // Keep current settings (username/email), but maybe adopt budget if 0
               settings: {
                 ...state.settings,
                 monthlyBudget: state.settings.monthlyBudget || oldData.settings?.monthlyBudget || 0,
@@ -367,45 +431,47 @@ export const useAppStore = create<AppState>()(
                   : (oldData.settings?.variableIncomes || []),
                 // Do not overwrite username/passwordHash
               },
-              lastProcessedDate: oldData.lastProcessedDate > state.lastProcessedDate ? oldData.lastProcessedDate : state.lastProcessedDate
+              lastProcessedDate: oldData.lastProcessedDate > state.lastProcessedDate ? oldData.lastProcessedDate : state.lastProcessedDate,
+              lastLocalUpdateAt: nowIso(),
+              hasUnsyncedChanges: true
             };
           });
           
           // Save the merged state to the NEW account
           await get().saveUserState();
           
-          return { status: 'success', message: '数据迁移成功！' };
+          return { status: 'success', message: 'Data migration completed.' };
           
         } catch (error) {
           console.error('[MIGRATE] Failed:', error);
-          return { status: 'error', message: '迁移失败，请检查网络或稍后重试' };
+          return { status: 'error', message: 'Migration failed. Please retry later.' };
         }
       },
-
       verifyAndLoadData: async (password: string, pendingData: any) => {
         if (!pendingData || !pendingData.settings || !pendingData.settings.passwordHash) {
            return false;
         }
 
-        // Hash the input password
         const msgBuffer = new TextEncoder().encode(password);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
         if (hashHex === pendingData.settings.passwordHash) {
-           console.log('[AUTH SUCCESS] 🔓 密码验证通过，加载数据...');
-           set({ 
+           console.log('[AUTH SUCCESS] Password verified, loading cloud data.');
+           set({
               settings: pendingData.settings,
               transactions: pendingData.transactions,
               piggyBank: pendingData.piggyBank,
               lastProcessedDate: pendingData.lastProcessedDate,
+              lastLocalUpdateAt: pendingData.updatedAt || pendingData.settings?.updatedAt || nowIso(),
+              hasUnsyncedChanges: false,
               isInitialized: true,
               isLocked: false
            });
            return true;
         } else {
-           console.warn('[AUTH FAILED] 🔒 密码错误！');
+           console.warn('[AUTH FAILED] Invalid password.');
            return false;
         }
       }
@@ -416,7 +482,11 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         ...state,
         isInitialized: false, 
+        isLocked: true,
       } as any),
     }
   )
 );
+
+
+

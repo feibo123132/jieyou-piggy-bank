@@ -9,19 +9,40 @@ import TrashPage from '@/pages/TrashPage';
 import { DayProcessor } from '@/components/logic/DayProcessor';
 import { useAppStore } from '@/store/useAppStore';
 import { LoginOverlay } from '@/components/auth/LoginOverlay';
+import { hasAuthenticatedSession } from '@/lib/cloudbase';
 
 function App() {
-  const { settings, isInitialized, pullFromCloud } = useAppStore();
+  const { settings, isInitialized, isLocked, pullFromCloud, requireLogin } = useAppStore();
 
-  // Startup Sync: Ensure we have the latest data from cloud on app load
+  // Startup gate: require authenticated session before unlocking app.
   useEffect(() => {
-    if (settings.username && !isInitialized) {
-      console.log('[App] Starting initial sync...');
-      pullFromCloud();
-    }
-  }, [settings.username, isInitialized, pullFromCloud]);
+    let cancelled = false;
 
-  if (!settings || !settings.username) {
+    const bootstrap = async () => {
+      const username = settings.username?.trim();
+      if (!username) return;
+
+      const hasSession = await hasAuthenticatedSession(username);
+      if (cancelled) return;
+
+      if (!hasSession) {
+        requireLogin();
+        return;
+      }
+
+      if (!isInitialized) {
+        console.log('[App] Starting initial sync...');
+        await pullFromCloud(username);
+      }
+    };
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.username, isInitialized, pullFromCloud, requireLogin]);
+
+  if (!settings || !settings.username || isLocked) {
     return <LoginOverlay />;
   }
 
