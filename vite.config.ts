@@ -6,7 +6,8 @@ import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/jieyou-piggy-bank/' : '/',
+  // 核心排雷：强制所有环境下的根路径为 '/'，适配二级域名部署
+  base: '/',
   test: {
     environment: 'jsdom',
     globals: true,
