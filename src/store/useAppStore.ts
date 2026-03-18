@@ -42,7 +42,6 @@ interface AppState {
   // Cloud Sync Actions
   // Modified to return a status instead of just void
   pullFromCloud: (username?: string) => Promise<{ status: 'success' | 'auth_required' | 'not_found' | 'error', data?: any }>;
-  migrateFromOldAccount: (oldUsername: string) => Promise<{ status: 'success' | 'not_found' | 'error', message?: string }>;
   verifyAndLoadData: (password: string, pendingData: any) => Promise<boolean>;
   saveUserState: () => Promise<void>;
   requireLogin: () => void;
@@ -368,85 +367,6 @@ export const useAppStore = create<AppState>()(
         set({ isLocked: true, isInitialized: false });
       },
 
-      migrateFromOldAccount: async (oldUsername: string) => {
-        const currentUsername = get().settings.username;
-        if (!currentUsername) {
-          return { status: 'error', message: 'Please log in to the new account before migrating data.' };
-        }
-        
-        console.log(`[MIGRATE] Attempting to migrate from ${oldUsername} to ${currentUsername}...`);
-        
-        try {
-          const db = getDb();
-          // Try to read the old document
-          const oldDoc = await db.collection('transactions').doc(oldUsername).get();
-
-          const oldRawData = oldDoc?.data;
-          const oldData = Array.isArray(oldRawData)
-            ? (oldRawData.length > 0 ? oldRawData[0] : null)
-            : (oldRawData || null);
-
-          if (!oldData) {
-            console.warn(`[MIGRATE] Old account ${oldUsername} not found.`);
-            return { status: 'not_found', message: 'Old account data was not found.' };
-          }
-          
-          // Basic validation of data structure
-          if (!oldData.transactions && !oldData.piggyBank) {
-             return { status: 'error', message: 'Old account data format is invalid.' };
-          }
-
-          // Check for password on old account
-          if (oldData.settings?.passwordHash) {
-            console.log('[MIGRATE] Old account has password protection.');
-          }
-
-          // MERGE STRATEGY:
-          // 1. Keep current settings (email, etc.) but maybe import budget if not set?
-          // 2. Merge transactions (concat and dedupe by ID?)
-          // 3. Merge piggy bank (add amounts?)
-          
-          // For simplicity and safety: We will MERGE transactions and KEEP current settings unless empty.
-          
-          set((state) => {
-            const mergedTransactions = [...state.transactions, ...(oldData.transactions || [])];
-            // Deduplicate by ID
-            const uniqueTransactions = Array.from(new Map(mergedTransactions.map(item => [item.id, item])).values());
-            
-            // Piggy Bank: use old data only if current looks empty.
-            const newPiggyBank = state.piggyBank.currentAmount === 0 && state.piggyBank.totalSavedHistory === 0 
-              ? oldData.piggyBank 
-              : state.piggyBank;
-
-            return {
-              transactions: uniqueTransactions,
-              piggyBank: newPiggyBank || state.piggyBank,
-              settings: {
-                ...state.settings,
-                monthlyBudget: state.settings.monthlyBudget || oldData.settings?.monthlyBudget || 0,
-                dailyBudget: state.settings.dailyBudget || oldData.settings?.dailyBudget || 0,
-                fixedExpenses: state.settings.fixedExpenses.length === 0 ? (oldData.settings?.fixedExpenses || []) : state.settings.fixedExpenses,
-                variableIncomes: (state.settings.variableIncomes && state.settings.variableIncomes.length > 0)
-                  ? state.settings.variableIncomes
-                  : (oldData.settings?.variableIncomes || []),
-                // Do not overwrite username/passwordHash
-              },
-              lastProcessedDate: oldData.lastProcessedDate > state.lastProcessedDate ? oldData.lastProcessedDate : state.lastProcessedDate,
-              lastLocalUpdateAt: nowIso(),
-              hasUnsyncedChanges: true
-            };
-          });
-          
-          // Save the merged state to the NEW account
-          await get().saveUserState();
-          
-          return { status: 'success', message: 'Data migration completed.' };
-          
-        } catch (error) {
-          console.error('[MIGRATE] Failed:', error);
-          return { status: 'error', message: 'Migration failed. Please retry later.' };
-        }
-      },
       verifyAndLoadData: async (password: string, pendingData: any) => {
         if (!pendingData || !pendingData.settings || !pendingData.settings.passwordHash) {
            return false;
