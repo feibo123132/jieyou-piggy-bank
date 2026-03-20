@@ -18,10 +18,17 @@ import { Button } from '@/components/ui/Button';
 import { TransactionTag, Transaction } from '@/types';
 
 const CalendarPage: React.FC = () => {
-  const { transactions, settings, removeTransaction, updateTransaction } = useAppStore();
+  const { transactions, settings, removeTransaction, updateTransaction, addTransaction } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewingDate, setViewingDate] = useState<Date | null>(null);
   
+  // Add Modal State
+  const [isAdding, setIsAdding] = useState(false);
+  const [addAmount, setAddAmount] = useState('');
+  const [addDate, setAddDate] = useState('');
+  const [addTags, setAddTags] = useState<TransactionTag[]>(['optional']);
+  const [addNote, setAddNote] = useState('');
+
   // Edit Modal State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState('');
@@ -118,6 +125,15 @@ const CalendarPage: React.FC = () => {
     setEditNote(transaction.note || '');
   };
 
+  const openAddModal = (dateStr: string) => {
+    setViewingDate(null);
+    setAddDate(dateStr);
+    setAddAmount('');
+    setAddTags(['optional']);
+    setAddNote('');
+    setIsAdding(true);
+  };
+
   const handleUpdate = () => {
     if (!editingTransaction || !editAmount) return;
 
@@ -130,6 +146,21 @@ const CalendarPage: React.FC = () => {
     });
 
     setEditingTransaction(null);
+  };
+
+  const handleAdd = () => {
+    if (!addAmount || !addDate) return;
+
+    addTransaction({
+      id: Date.now().toString(),
+      date: addDate,
+      amount: parseFloat(addAmount),
+      tags: addTags,
+      note: addNote,
+      createdAt: new Date().toISOString(),
+    });
+
+    setIsAdding(false);
   };
 
   const toggleEditTag = (tag: TransactionTag) => {
@@ -149,6 +180,25 @@ const CalendarPage: React.FC = () => {
       }
     }
     setEditTags(newTags);
+  };
+
+  const toggleAddTag = (tag: TransactionTag) => {
+    let newTags = [...addTags];
+    
+    if (newTags.includes(tag)) {
+      if (newTags.length > 1) {
+        newTags = newTags.filter(t => t !== tag);
+      }
+    } else {
+      newTags.push(tag);
+      if (tag === 'necessary') {
+        newTags = newTags.filter(t => t !== 'optional');
+      }
+      if (tag === 'optional') {
+        newTags = newTags.filter(t => t !== 'necessary');
+      }
+    }
+    setAddTags(newTags);
   };
 
   const groupTransactionsByDate = () => {
@@ -386,9 +436,17 @@ const CalendarPage: React.FC = () => {
                     )}
                   </p>
                 </div>
-                <button onClick={() => setViewingDate(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
-                  <ChevronDown size={20} />
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button 
+                    onClick={() => openAddModal(format(viewingDate, 'yyyy-MM-dd'))}
+                    className="px-4 py-2 bg-primary/10 text-primary text-sm font-medium rounded-full hover:bg-primary/20 transition-colors"
+                  >
+                    补记
+                  </button>
+                  <button onClick={() => setViewingDate(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
+                    <ChevronDown size={20} />
+                  </button>
+                </div>
               </div>
               
               <div className="space-y-3 overflow-y-auto pb-8">
@@ -533,6 +591,108 @@ const CalendarPage: React.FC = () => {
                 <Button fullWidth size="lg" onClick={handleUpdate}>
                   <Check size={20} className="mr-2" />
                   保存修改
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Add Transaction Modal */}
+      <AnimatePresence>
+        {isAdding && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAdding(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 md:max-w-4xl md:mx-auto"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-800">补记支出</h2>
+                <button onClick={() => setIsAdding(false)} className="text-gray-400">取消</button>
+              </div>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">金额</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-900">¥</span>
+                    <input
+                      type="number"
+                      value={addAmount}
+                      onChange={(e) => setAddAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-gray-50 rounded-2xl py-4 pl-10 pr-4 text-4xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">日期</label>
+                  <div className="relative">
+                     <input
+                        type="date"
+                        value={addDate}
+                        onChange={(e) => setAddDate(e.target.value)}
+                        className="w-full bg-gray-50 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">标签</label>
+                  <div className="flex space-x-3">
+                    <TagButton 
+                      label="必要支出" 
+                      active={addTags.includes('necessary')} 
+                      onClick={() => toggleAddTag('necessary')}
+                      icon={<span className="text-lg">🍚</span>}
+                    />
+                    <TagButton 
+                      label="固定支出" 
+                      active={addTags.includes('fixed')} 
+                      onClick={() => toggleAddTag('fixed')}
+                      icon={<Zap size={16} />}
+                    />
+                    <TagButton 
+                      label="非必要支出" 
+                      active={addTags.includes('optional')} 
+                      onClick={() => toggleAddTag('optional')}
+                      icon={<span className="text-lg">🍔</span>}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                   <label className="text-sm text-gray-500 mb-2 block">消费详情</label>
+                   <div className="relative">
+                     <textarea
+                       value={addNote}
+                       onChange={(e) => {
+                         if (e.target.value.length <= 100) {
+                           setAddNote(e.target.value);
+                         }
+                       }}
+                       placeholder="写点什么..."
+                       className="w-full bg-gray-50 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary min-h-[100px] resize-none text-sm placeholder:text-gray-400"
+                     />
+                     <div className="absolute right-3 bottom-3 text-xs text-gray-400">
+                       {addNote.length}/100
+                     </div>
+                   </div>
+                </div>
+
+                <Button fullWidth size="lg" onClick={handleAdd}>
+                  <Check size={20} className="mr-2" />
+                  保存记录
                 </Button>
               </div>
             </motion.div>
