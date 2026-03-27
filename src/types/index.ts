@@ -24,7 +24,7 @@ export interface UserSettings {
   passwordHash?: string; // SHA-256 hash for authentication
 }
 
-export type TransactionTag = 'necessary' | 'fixed' | 'optional';
+export type TransactionTag = 'necessary' | 'fixed' | 'optional' | 'idea';
 
 export interface Transaction {
   id: string;
