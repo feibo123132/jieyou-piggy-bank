@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, getDaysInMonth } from 'date-fns';
-import { Plus, Check, Wallet, Coffee, Zap } from 'lucide-react';
+import { Plus, Check, Wallet, Zap } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
 import { usePiggyBankLogic } from '@/hooks/usePiggyBankLogic';
@@ -10,6 +10,10 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { TransactionTag } from '@/types';
+import {
+  getDefaultTransactionTags,
+  toggleTransactionTag,
+} from '@/lib/transactionTags';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DashboardPage: React.FC = () => {
@@ -21,7 +25,7 @@ const DashboardPage: React.FC = () => {
   
   // Transaction Form State
   const [amount, setAmount] = useState('');
-  const [selectedTags, setSelectedTags] = useState<TransactionTag[]>(['optional']);
+  const [selectedTags, setSelectedTags] = useState<TransactionTag[]>(getDefaultTransactionTags());
   const [note, setNote] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -73,6 +77,7 @@ const DashboardPage: React.FC = () => {
     });
     
     setAmount('');
+    setSelectedTags(getDefaultTransactionTags());
     setNote('');
     // Reset date to today for next time, or keep it? User might add multiple past records. 
     // Usually resetting to today is safer to avoid accidental wrong dates.
@@ -81,27 +86,7 @@ const DashboardPage: React.FC = () => {
   };
 
   const toggleTag = (tag: TransactionTag) => {
-    let newTags = [...selectedTags];
-    
-    if (newTags.includes(tag)) {
-      // Prevent removing the last tag if desired, or allow empty. 
-      // Existing logic prevented empty. Keeping it for now.
-      if (newTags.length > 1) {
-        newTags = newTags.filter(t => t !== tag);
-      }
-    } else {
-      newTags.push(tag);
-      
-      // Mutually exclusive logic
-      if (tag === 'necessary') {
-        newTags = newTags.filter(t => t !== 'optional');
-      }
-      if (tag === 'optional') {
-        newTags = newTags.filter(t => t !== 'necessary');
-      }
-    }
-    
-    setSelectedTags(newTags);
+    setSelectedTags((currentTags) => toggleTransactionTag(currentTags, tag));
   };
 
   const formatCurrency = (amount: number) => {
@@ -363,7 +348,14 @@ const DashboardPage: React.FC = () => {
                       onClick={() => toggleTag('optional')}
                       icon={<span className="text-lg">🍔</span>}
                     />
+                    <TagButton 
+                      label="Idea" 
+                      active={selectedTags.includes('idea')} 
+                      onClick={() => toggleTag('idea')}
+                      icon={<span className="text-lg">💡</span>}
+                    />
                   </div>
+                  <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
                   {selectedTags.includes('fixed') && (
                     <p className="text-xs text-gray-400 mt-2 ml-1">
                       * 固定支出不计入今日预算消耗

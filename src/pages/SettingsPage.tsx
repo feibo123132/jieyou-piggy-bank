@@ -198,7 +198,7 @@ const SettingsPage: React.FC = () => {
   // Calculate Real-time Monthly Remaining (Preview based on input)
   // We use the local input 'monthlyBudget' minus local 'fixedExpenses' sum
   // minus the 'totalVariableSpent' from our hook (actual spending).
-  const monthlyRemaining = Math.max(0, parseFloat(monthlyBudget) - totalFixed - totalVariableSpent);
+  const monthlyRemaining = parseFloat(monthlyBudget) - totalFixed - totalVariableSpent;
 
   return (
     <div className="space-y-6 pb-20">
@@ -240,7 +240,10 @@ const SettingsPage: React.FC = () => {
           </div>
 
           <p className="text-sm text-gray-500 mt-1 border-t border-gray-100 pt-3">
-            本月实时剩余：<span className="text-green-600 font-bold">¥{formatCurrency(monthlyRemaining)}</span>
+            本月实时剩余：
+            <span className={`${monthlyRemaining >= 0 ? 'text-green-600' : 'text-red-500'} font-bold`}>
+              ¥{formatCurrency(monthlyRemaining)}
+            </span>
           </p>
         </div>
       </Card>

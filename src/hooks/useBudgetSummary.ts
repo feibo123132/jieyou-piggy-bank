@@ -22,7 +22,7 @@ export const useBudgetSummary = () => {
     .reduce((sum, t) => sum + t.amount, 0);
 
   // Real-time Remaining
-  const monthlyRemaining = Math.max(0, settings.monthlyBudget - totalSettingsFixed - totalVariableSpent);
+  const monthlyRemaining = settings.monthlyBudget - totalSettingsFixed - totalVariableSpent;
 
   return {
     monthlyRemaining,

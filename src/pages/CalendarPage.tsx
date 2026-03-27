@@ -16,6 +16,11 @@ import { Card } from '@/components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { TransactionTag, Transaction } from '@/types';
+import {
+  getDefaultTransactionTags,
+  hasIdeaTag,
+  toggleTransactionTag,
+} from '@/lib/transactionTags';
 
 const CalendarPage: React.FC = () => {
   const { transactions, settings, removeTransaction, updateTransaction, addTransaction } = useAppStore();
@@ -26,7 +31,7 @@ const CalendarPage: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [addAmount, setAddAmount] = useState('');
   const [addDate, setAddDate] = useState('');
-  const [addTags, setAddTags] = useState<TransactionTag[]>(['optional']);
+  const [addTags, setAddTags] = useState<TransactionTag[]>(getDefaultTransactionTags());
   const [addNote, setAddNote] = useState('');
 
   // Edit Modal State
@@ -121,7 +126,7 @@ const CalendarPage: React.FC = () => {
     setEditingTransaction(transaction);
     setEditAmount(transaction.amount.toString());
     setEditDate(transaction.date);
-    setEditTags(transaction.tags);
+    setEditTags(transaction.tags.length > 0 ? transaction.tags : getDefaultTransactionTags());
     setEditNote(transaction.note || '');
   };
 
@@ -129,7 +134,7 @@ const CalendarPage: React.FC = () => {
     setViewingDate(null);
     setAddDate(dateStr);
     setAddAmount('');
-    setAddTags(['optional']);
+    setAddTags(getDefaultTransactionTags());
     setAddNote('');
     setIsAdding(true);
   };
@@ -160,45 +165,16 @@ const CalendarPage: React.FC = () => {
       createdAt: new Date().toISOString(),
     });
 
+    setAddTags(getDefaultTransactionTags());
     setIsAdding(false);
   };
 
   const toggleEditTag = (tag: TransactionTag) => {
-    let newTags = [...editTags];
-    
-    if (newTags.includes(tag)) {
-      if (newTags.length > 1) {
-        newTags = newTags.filter(t => t !== tag);
-      }
-    } else {
-      newTags.push(tag);
-      if (tag === 'necessary') {
-        newTags = newTags.filter(t => t !== 'optional');
-      }
-      if (tag === 'optional') {
-        newTags = newTags.filter(t => t !== 'necessary');
-      }
-    }
-    setEditTags(newTags);
+    setEditTags((currentTags) => toggleTransactionTag(currentTags, tag));
   };
 
   const toggleAddTag = (tag: TransactionTag) => {
-    let newTags = [...addTags];
-    
-    if (newTags.includes(tag)) {
-      if (newTags.length > 1) {
-        newTags = newTags.filter(t => t !== tag);
-      }
-    } else {
-      newTags.push(tag);
-      if (tag === 'necessary') {
-        newTags = newTags.filter(t => t !== 'optional');
-      }
-      if (tag === 'optional') {
-        newTags = newTags.filter(t => t !== 'necessary');
-      }
-    }
-    setAddTags(newTags);
+    setAddTags((currentTags) => toggleTransactionTag(currentTags, tag));
   };
 
   const groupTransactionsByDate = () => {
@@ -303,8 +279,11 @@ const CalendarPage: React.FC = () => {
             <div key={`empty-${i}`} />
           ))}
           {daysInMonth.map((date) => {
+            const dateStr = format(date, 'yyyy-MM-dd');
+            const dayTransactions = transactions.filter((transaction) => transaction.date === dateStr && !transaction.deletedAt);
             const { status, savings } = calculateDailyStats(date);
             const isTodayDate = isToday(date);
+            const showsIdeaMarker = dayTransactions.some((transaction) => hasIdeaTag(transaction.tags));
             
             return (
               <motion.div
@@ -321,6 +300,9 @@ const CalendarPage: React.FC = () => {
                 `}
               >
                 <span>{format(date, 'd')}</span>
+                {showsIdeaMarker && status !== 'future' && (
+                  <span className="absolute top-1 right-1 text-sm leading-none">💡</span>
+                )}
                 {status !== 'future' && status !== 'neutral' && (
                   <span className="text-[10px] font-bold leading-none mt-0.5">
                     {status === 'saved' ? '+' : ''}{formatCurrency(savings)}
@@ -566,7 +548,14 @@ const CalendarPage: React.FC = () => {
                       onClick={() => toggleEditTag('optional')}
                       icon={<span className="text-lg">🍔</span>}
                     />
+                    <TagButton 
+                      label="Idea" 
+                      active={editTags.includes('idea')} 
+                      onClick={() => toggleEditTag('idea')}
+                      icon={<span className="text-lg">💡</span>}
+                    />
                   </div>
+                  <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
                 </div>
 
                 <div>
@@ -668,7 +657,14 @@ const CalendarPage: React.FC = () => {
                       onClick={() => toggleAddTag('optional')}
                       icon={<span className="text-lg">🍔</span>}
                     />
+                    <TagButton 
+                      label="Idea" 
+                      active={addTags.includes('idea')} 
+                      onClick={() => toggleAddTag('idea')}
+                      icon={<span className="text-lg">💡</span>}
+                    />
                   </div>
+                  <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
                 </div>
 
                 <div>

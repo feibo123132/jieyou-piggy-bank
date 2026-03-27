@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+// @vitest-environment node
 import { useBudgetSummary } from './useBudgetSummary';
 import { useAppStore } from '@/store/useAppStore';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -37,10 +37,37 @@ describe('useBudgetSummary', () => {
       transactions: mockTransactions,
     });
 
-    const { result } = renderHook(() => useBudgetSummary());
+    const result = useBudgetSummary();
 
-    expect(result.current.totalSettingsFixed).toBe(500);
-    expect(result.current.totalVariableSpent).toBe(150); // 100 + 50
-    expect(result.current.monthlyRemaining).toBe(1350); // 2000 - 500 - 150
+    expect(result.totalSettingsFixed).toBe(500);
+    expect(result.totalVariableSpent).toBe(150); // 100 + 50
+    expect(result.monthlyRemaining).toBe(1350); // 2000 - 500 - 150
+  });
+
+  it('allows monthlyRemaining to go negative when spending exceeds available budget', () => {
+    const mockSettings = {
+      monthlyBudget: 300,
+      fixedExpenses: [{ id: '1', amount: 200, label: '房租' }],
+    };
+
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+
+    const mockTransactions = [
+      { id: '1', amount: 80, tags: ['optional'], date: `${yyyy}-${mm}-01` },
+      { id: '2', amount: 70, tags: ['necessary'], date: `${yyyy}-${mm}-02` },
+    ];
+
+    (useAppStore as any).mockReturnValue({
+      settings: mockSettings,
+      transactions: mockTransactions,
+    });
+
+    const result = useBudgetSummary();
+
+    expect(result.totalSettingsFixed).toBe(200);
+    expect(result.totalVariableSpent).toBe(150);
+    expect(result.monthlyRemaining).toBe(-50);
   });
 });
