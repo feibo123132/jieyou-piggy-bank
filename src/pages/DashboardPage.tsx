@@ -337,10 +337,10 @@ const DashboardPage: React.FC = () => {
                       icon={<span className="text-lg">🍚</span>}
                     />
                     <TagButton 
-                      label="固定支出" 
-                      active={selectedTags.includes('fixed')} 
-                      onClick={() => toggleTag('fixed')}
-                      icon={<Zap size={16} />}
+                      label="非固定支出" 
+                      active={selectedTags.includes('unfixed')} 
+                      onClick={() => toggleTag('unfixed')}
+                      icon={<span className="text-lg">💸</span>}
                     />
                     <TagButton 
                       label="非必要支出" 
@@ -356,11 +356,6 @@ const DashboardPage: React.FC = () => {
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
-                  {selectedTags.includes('fixed') && (
-                    <p className="text-xs text-gray-400 mt-2 ml-1">
-                      * 固定支出不计入今日预算消耗
-                    </p>
-                  )}
                 </div>
 
                 <div>

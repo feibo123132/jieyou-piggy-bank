@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Settings, Menu, X, LogOut, Box, Trash2, Volume2, BarChart2, User } from 'lucide-react';
+import { LayoutDashboard, Calendar, Settings, Menu, X, LogOut, Trash2, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/store/useAppStore';
+import { isSameMonth, format, subMonths, addMonths } from 'date-fns';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -11,11 +12,13 @@ export const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
+  const [isUnfixedModalOpen, setIsUnfixedModalOpen] = useState(false);
+  const [unfixedModalDate, setUnfixedModalDate] = useState(new Date());
   
   const menuRef = useRef<HTMLDivElement>(null);
   const desktopMenuRef = useRef<HTMLDivElement>(null);
   
-  const { updateSettings, settings } = useAppStore();
+  const { updateSettings, settings, transactions } = useAppStore();
 
   // Close mobile menu when clicking outside
   useEffect(() => {
@@ -61,6 +64,16 @@ export const Navbar: React.FC = () => {
       }
   };
 
+  const unfixedTransactions = transactions
+    .filter(t => isSameMonth(new Date(t.date), unfixedModalDate) && !t.deletedAt && t.tags.includes('unfixed'))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+  const totalUnfixed = unfixedTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+  const formatCurrency = (amount: number) => {
+    return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1);
+  };
+
   return (
     <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -104,6 +117,17 @@ export const Navbar: React.FC = () => {
                              </div>
                              <p className="font-bold text-gray-800 truncate">{settings.username || '未登录'}</p>
                            </div>
+
+                           <button 
+                               onClick={() => {
+                                 setIsUnfixedModalOpen(true);
+                                 setIsDesktopMenuOpen(false);
+                               }}
+                               className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                           >
+                               <span className="text-lg leading-none w-[18px] text-center">💸</span>
+                               <span>非固定支出</span>
+                           </button>
 
                            <button 
                                onClick={() => {
@@ -161,6 +185,85 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Unfixed Expenses Modal */}
+      <AnimatePresence>
+        {isUnfixedModalOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsUnfixedModalOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl z-[70] max-h-[80vh] flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-4 shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                    <span className="text-2xl mr-2">💸</span>
+                    非固定支出
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => setIsUnfixedModalOpen(false)}
+                  className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center bg-gray-50 rounded-xl p-2 mb-4">
+                <button 
+                  onClick={() => setUnfixedModalDate(prev => subMonths(prev, 1))}
+                  className="p-2 rounded-lg hover:bg-white hover:shadow-sm text-gray-600 transition-all"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="font-medium text-gray-800 text-sm">
+                  {format(unfixedModalDate, 'yyyy年 MM月')}
+                </span>
+                <button 
+                  onClick={() => setUnfixedModalDate(prev => addMonths(prev, 1))}
+                  className="p-2 rounded-lg hover:bg-white hover:shadow-sm text-gray-600 transition-all"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto pr-2 space-y-3 pb-2">
+                {/* Total Unfixed Spending Display */}
+                <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-4 rounded-2xl flex justify-between items-center text-white mb-2 shadow-md">
+                  <div>
+                    <p className="text-sm text-gray-300 font-medium">本月总支出</p>
+                  </div>
+                  <span className="font-bold text-xl">¥{formatCurrency(totalUnfixed)}</span>
+                </div>
+
+                {unfixedTransactions.length === 0 ? (
+                  <div className="text-center py-10 text-gray-400">
+                    <p>{format(unfixedModalDate, 'MM月')}暂无非固定支出记录</p>
+                  </div>
+                ) : (
+                  unfixedTransactions.map(t => (
+                    <div key={t.id} className="bg-gray-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100">
+                      <div>
+                        <p className="font-medium text-gray-800">{t.note || '非固定支出'}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{format(new Date(t.date), 'MM-dd')}</p>
+                      </div>
+                      <span className="font-bold text-gray-900">-¥{formatCurrency(t.amount)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </nav>
   );
 };

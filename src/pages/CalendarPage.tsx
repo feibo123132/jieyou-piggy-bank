@@ -353,13 +353,14 @@ const CalendarPage: React.FC = () => {
                       <div className="flex items-center space-x-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                           t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
+                          t.tags.includes('unfixed') ? 'bg-indigo-100 text-indigo-600' :
                           t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
                         }`}>
-                          {t.tags.includes('fixed') ? '固' : t.tags.includes('necessary') ? '必' : '非'}
+                          {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '非固' : t.tags.includes('necessary') ? '必' : '非'}
                         </div>
                         <div>
                           <p className="font-bold text-gray-800">
-                            {t.note || (t.tags.includes('fixed') ? '固定支出' : '日常消费')}
+                            {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '非固定支出' : '日常消费')}
                           </p>
                           <p className="text-xs text-gray-400 hidden">{format(new Date(t.date), 'MM-dd')}</p>
                         </div>
@@ -449,13 +450,14 @@ const CalendarPage: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                             t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
+                            t.tags.includes('unfixed') ? 'bg-indigo-100 text-indigo-600' :
                             t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
                           }`}>
-                            {t.tags.includes('fixed') ? '固' : t.tags.includes('necessary') ? '必' : '非'}
+                            {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '非固' : t.tags.includes('necessary') ? '必' : '非'}
                           </div>
                           <div>
                             <p className="font-bold text-gray-800">
-                              {t.note || (t.tags.includes('fixed') ? '固定支出' : '日常消费')}
+                              {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '非固定支出' : '日常消费')}
                             </p>
                             <p className="text-xs text-gray-400">{format(new Date(t.date), 'HH:mm')}</p>
                           </div>
@@ -537,10 +539,10 @@ const CalendarPage: React.FC = () => {
                       icon={<span className="text-lg">🍚</span>}
                     />
                     <TagButton 
-                      label="固定支出" 
-                      active={editTags.includes('fixed')} 
-                      onClick={() => toggleEditTag('fixed')}
-                      icon={<Zap size={16} />}
+                      label="非固定支出" 
+                      active={editTags.includes('unfixed')} 
+                      onClick={() => toggleEditTag('unfixed')}
+                      icon={<span className="text-lg">💸</span>}
                     />
                     <TagButton 
                       label="非必要支出" 
@@ -646,10 +648,10 @@ const CalendarPage: React.FC = () => {
                       icon={<span className="text-lg">🍚</span>}
                     />
                     <TagButton 
-                      label="固定支出" 
-                      active={addTags.includes('fixed')} 
-                      onClick={() => toggleAddTag('fixed')}
-                      icon={<Zap size={16} />}
+                      label="非固定支出" 
+                      active={addTags.includes('unfixed')} 
+                      onClick={() => toggleAddTag('unfixed')}
+                      icon={<span className="text-lg">💸</span>}
                     />
                     <TagButton 
                       label="非必要支出" 

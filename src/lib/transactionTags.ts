@@ -8,7 +8,7 @@ export const TRANSACTION_TAG_OPTIONS: Array<{
   icon: string;
 }> = [
   { tag: 'necessary', label: '必要支出', icon: '🍰' },
-  { tag: 'fixed', label: '固定支出', icon: '⚡' },
+  { tag: 'unfixed', label: '非固定支出', icon: '⚡' },
   { tag: 'optional', label: '非必要支出', icon: '🍔' },
   { tag: 'idea', label: 'Idea', icon: '💡' },
 ];
@@ -30,6 +30,11 @@ export const TRANSACTION_TAG_META: Record<
     shortLabel: '固',
     defaultNote: '固定支出',
     toneClassName: 'bg-purple-100 text-purple-600',
+  },
+  unfixed: {
+    shortLabel: '非固',
+    defaultNote: '非固定支出',
+    toneClassName: 'bg-indigo-100 text-indigo-600',
   },
   optional: {
     shortLabel: '非',
@@ -71,6 +76,7 @@ export const hasIdeaTag = (tags: TransactionTag[]) => tags.includes('idea');
 
 export const getPrimaryTransactionTag = (tags: TransactionTag[]): TransactionTag => {
   if (tags.includes('fixed')) return 'fixed';
+  if (tags.includes('unfixed')) return 'unfixed';
   if (tags.includes('necessary')) return 'necessary';
   if (tags.includes('optional')) return 'optional';
   return 'idea';
