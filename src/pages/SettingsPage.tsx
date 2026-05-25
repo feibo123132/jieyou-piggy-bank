@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿import React, { useState, useEffect } from 'react';
+﻿﻿﻿﻿﻿﻿﻿﻿﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Save, ArrowLeft, GripVertical, Pencil, Check, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { FixedExpense, VariableIncome } from '@/types';
+import {
+  getFixedExpensesForMonth,
+  normalizeFixedExpenseSnapshots,
+  saveFixedExpensesForMonth,
+} from '@/lib/fixedExpenses';
 import { getVariableIncomesForMonth, replaceVariableIncomesForMonth } from '@/lib/variableIncomes';
 import { Reorder, AnimatePresence } from 'framer-motion';
 import { format, getDaysInMonth } from 'date-fns';
@@ -19,7 +24,14 @@ const SettingsPage: React.FC = () => {
   
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
   const [dailyBudgetInput, setDailyBudgetInput] = useState((settings.dailyBudget || 0).toString());
-  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(settings.fixedExpenses);
+  const [selectedFixedMonth, setSelectedFixedMonth] = useState(currentMonthKey);
+  const [applyFixedChangesFromMonth, setApplyFixedChangesFromMonth] = useState(true);
+  const [fixedExpenseSnapshots, setFixedExpenseSnapshots] = useState(
+    normalizeFixedExpenseSnapshots(settings.fixedExpensesByMonth),
+  );
+  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(
+    getFixedExpensesForMonth(settings.fixedExpensesByMonth, currentMonthKey, settings.fixedExpenses),
+  );
   const [selectedIncomeMonth, setSelectedIncomeMonth] = useState(currentMonthKey);
   const [allVariableIncomes, setAllVariableIncomes] = useState<VariableIncome[]>(settings.variableIncomes || []);
   const [username, setUsername] = useState(settings.username || '');
@@ -40,13 +52,20 @@ const SettingsPage: React.FC = () => {
   const [newIncomeAmount, setNewIncomeAmount] = useState('');
   const variableIncomes = getVariableIncomesForMonth(allVariableIncomes, selectedIncomeMonth);
   const selectedIncomeMonthLabel = `${selectedIncomeMonth.replace('-', '年')}月`;
+  const selectedFixedMonthLabel = `${selectedFixedMonth.replace('-', '年')}月`;
 
   useEffect(() => {
     setMonthlyBudget(settings.monthlyBudget.toString());
     setDailyBudgetInput((settings.dailyBudget || 0).toString());
-    setFixedExpenses(settings.fixedExpenses);
+    const normalizedSnapshots = normalizeFixedExpenseSnapshots(settings.fixedExpensesByMonth);
+    setFixedExpenseSnapshots(normalizedSnapshots);
+    setFixedExpenses(getFixedExpensesForMonth(normalizedSnapshots, selectedFixedMonth, settings.fixedExpenses));
     setAllVariableIncomes(settings.variableIncomes || []);
-  }, [settings]);
+  }, [settings, selectedFixedMonth]);
+
+  useEffect(() => {
+    setFixedExpenses(getFixedExpensesForMonth(fixedExpenseSnapshots, selectedFixedMonth, settings.fixedExpenses));
+  }, [fixedExpenseSnapshots, selectedFixedMonth, settings.fixedExpenses]);
 
   const handleAddExpense = () => {
     if (!newExpenseLabel || !newExpenseAmount) return;
@@ -156,6 +175,7 @@ const SettingsPage: React.FC = () => {
   const handleSave = async () => {
     let finalFixedExpenses = [...fixedExpenses];
     let finalVariableIncomes = [...allVariableIncomes];
+    let finalFixedSnapshots = [...fixedExpenseSnapshots];
 
     // "Vacuum Cleaner" Logic: Capture unsaved input
     if (newExpenseLabel && newExpenseAmount) {
@@ -191,10 +211,19 @@ const SettingsPage: React.FC = () => {
       setAllVariableIncomes(finalVariableIncomes);
     }
 
+    finalFixedSnapshots = saveFixedExpensesForMonth(
+      finalFixedSnapshots,
+      selectedFixedMonth,
+      finalFixedExpenses,
+      applyFixedChangesFromMonth,
+    );
+    setFixedExpenseSnapshots(finalFixedSnapshots);
+
     updateSettings({
       monthlyBudget: parseFloat(monthlyBudget) || 0,
       dailyBudget: parseFloat(dailyBudgetInput) || 0,
-      fixedExpenses: finalFixedExpenses,
+      fixedExpenses: settings.fixedExpenses.length > 0 ? settings.fixedExpenses : finalFixedExpenses,
+      fixedExpensesByMonth: finalFixedSnapshots,
       variableIncomes: finalVariableIncomes,
       isOnboarded: true,
       username,
@@ -222,7 +251,12 @@ const SettingsPage: React.FC = () => {
   // Calculate Real-time Monthly Remaining (Preview based on input)
   // We use the local input 'monthlyBudget' minus local 'fixedExpenses' sum
   // minus the 'totalVariableSpent' from our hook (actual spending).
-  const monthlyRemaining = parseFloat(monthlyBudget) - totalFixed - totalVariableSpent;
+  const currentMonthFixedTotal = getFixedExpensesForMonth(
+    fixedExpenseSnapshots,
+    currentMonthKey,
+    settings.fixedExpenses,
+  ).reduce((sum, item) => sum + item.amount, 0);
+  const monthlyRemaining = parseFloat(monthlyBudget) - currentMonthFixedTotal - totalVariableSpent;
 
   return (
     <div className="space-y-6 pb-20">
@@ -369,8 +403,31 @@ const SettingsPage: React.FC = () => {
       </Card>
 
       <Card>
-        <h2 className="text-lg font-semibold mb-4 text-gray-700">每月固定支出</h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-700">月度固定支出</h2>
+            <p className="mt-1 text-sm text-gray-400">可单独维护每个月，并支持从当前月起同步到未来月份。</p>
+          </div>
+          <div className="w-full sm:w-48">
+            <Input
+              label="查看月份"
+              type="month"
+              value={selectedFixedMonth}
+              onChange={(e) => setSelectedFixedMonth(e.target.value || currentMonthKey)}
+            />
+          </div>
+        </div>
         <div className="space-y-4">
+          <label className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2">
+            <input
+              type="checkbox"
+              checked={applyFixedChangesFromMonth}
+              onChange={(e) => setApplyFixedChangesFromMonth(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            本次保存从{selectedFixedMonthLabel}起生效（覆盖未来已创建月份）
+          </label>
+
           <div className="flex space-x-2">
             <Input
               placeholder="项目（如：房租）"
@@ -455,13 +512,13 @@ const SettingsPage: React.FC = () => {
               </AnimatePresence>
             </Reorder.Group>
             {fixedExpenses.length === 0 && (
-              <p className="text-center text-gray-400 py-4 text-sm">暂无固定支出</p>
+              <p className="text-center text-gray-400 py-4 text-sm">{selectedFixedMonthLabel}暂无固定支出</p>
             )}
           </div>
           
           {fixedExpenses.length > 0 && (
              <div className="pt-4 border-t border-gray-100 flex justify-between text-sm font-medium">
-               <span>总固定支出</span>
+               <span>{selectedFixedMonthLabel}总固定支出</span>
                <span>¥{totalFixed}</span>
              </div>
           )}

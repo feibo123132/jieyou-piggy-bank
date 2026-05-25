@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore';
-import { isSameMonth } from 'date-fns';
+import { format, isSameMonth } from 'date-fns';
+import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 
 export const useBudgetSummary = () => {
   const { settings, transactions } = useAppStore();
@@ -8,9 +9,14 @@ export const useBudgetSummary = () => {
   const currentMonthTransactions = transactions.filter(t => 
     isSameMonth(new Date(t.date), today) && !t.deletedAt
   );
+  const currentMonthKey = format(today, 'yyyy-MM');
 
   // Real-time Remaining
-  const totalSettingsFixed = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalSettingsFixed = getFixedExpensesForMonth(
+    settings.fixedExpensesByMonth,
+    currentMonthKey,
+    settings.fixedExpenses,
+  ).reduce((sum, e) => sum + e.amount, 0);
   
   // Expenses that eat into the "Discretionary Budget"
   // In Mode A, Fixed Expenses are pre-deducted from the Monthly Budget.

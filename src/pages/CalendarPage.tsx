@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { TransactionTag, Transaction } from '@/types';
+import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 import {
   getDefaultTransactionTags,
   hasIdeaTag,
@@ -59,7 +60,11 @@ const CalendarPage: React.FC = () => {
     .filter(income => income.month === currentMonthKey)
     .reduce((sum, income) => sum + income.amount, 0);
   
-  const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const fixedTotal = getFixedExpensesForMonth(
+    settings.fixedExpensesByMonth,
+    currentMonthKey,
+    settings.fixedExpenses,
+  ).reduce((sum, e) => sum + e.amount, 0);
   
   const calculatedDaily = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
   const dailyBudget = settings.dailyBudget && settings.dailyBudget > 0 

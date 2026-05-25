@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { differenceInCalendarDays, addDays, format, getDaysInMonth } from 'date-fns';
+import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 
 export const DayProcessor: React.FC = () => {
   const { 
@@ -36,7 +37,12 @@ export const DayProcessor: React.FC = () => {
       
       // Calculate Daily Budget for that month
       const daysInMonth = getDaysInMonth(processingDate);
-      const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const monthKey = format(processingDate, 'yyyy-MM');
+      const fixedTotal = getFixedExpensesForMonth(
+        settings.fixedExpensesByMonth,
+        monthKey,
+        settings.fixedExpenses,
+      ).reduce((sum, e) => sum + e.amount, 0);
       const dailyBudget = Math.max(0, (settings.monthlyBudget - fixedTotal) / daysInMonth);
       
       // Calculate Expenses for that day

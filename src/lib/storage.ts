@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   monthlyBudget: 0,
   dailyBudget: 0,
   fixedExpenses: [],
+  fixedExpensesByMonth: [],
   isOnboarded: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),

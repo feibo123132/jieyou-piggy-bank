@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore';
 import { eachDayOfInterval, startOfMonth, endOfMonth, isFuture, format } from 'date-fns';
+import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 
 const PIGGY_LEVELS = [30, 50, 100, 200, 500] as const;
 
@@ -22,7 +23,11 @@ export const usePiggyBankLogic = () => {
     const endCalcDate = endOfMonth(today); // We'll filter out future days
     
     // Calculate fixed expenses total
-    const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const fixedTotal = getFixedExpensesForMonth(
+      settings.fixedExpensesByMonth,
+      currentMonthKey,
+      settings.fixedExpenses,
+    ).reduce((sum, e) => sum + e.amount, 0);
     
     // Calculate Daily Budget
     // (Monthly - Fixed) / DaysInMonth

@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   monthlyBudget: 0,
   dailyBudget: 0, // Default to 0, means "not set" or "use fallback if any"
   fixedExpenses: [],
+  fixedExpensesByMonth: [],
   variableIncomes: [],
   isOnboarded: false,
   createdAt: new Date().toISOString(),
@@ -407,6 +408,5 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
-
 
 

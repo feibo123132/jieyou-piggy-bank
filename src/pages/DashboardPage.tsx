@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { TransactionTag } from '@/types';
+import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 import {
   getDefaultTransactionTags,
   toggleTransactionTag,
@@ -33,7 +34,12 @@ const DashboardPage: React.FC = () => {
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
   const daysInMonth = getDaysInMonth(today);
-  const fixedTotal = settings.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const currentMonthKey = format(today, 'yyyy-MM');
+  const fixedTotal = getFixedExpensesForMonth(
+    settings.fixedExpensesByMonth,
+    currentMonthKey,
+    settings.fixedExpenses,
+  ).reduce((sum, e) => sum + e.amount, 0);
   
   // Use manual daily budget if set, otherwise fallback to calculated
   // Calculated fallback: (Monthly - Fixed) / 30
