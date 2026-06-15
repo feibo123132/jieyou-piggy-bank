@@ -9,7 +9,7 @@ import TrashPage from '@/pages/TrashPage';
 import { DayProcessor } from '@/components/logic/DayProcessor';
 import { useAppStore } from '@/store/useAppStore';
 import { LoginOverlay } from '@/components/auth/LoginOverlay';
-import { hasAuthenticatedSession } from '@/lib/cloudbase';
+import { hasAuthenticatedSession, subscribeAuthenticatedSessionChanges } from '@/lib/cloudbase';
 
 function App() {
   const { settings, isInitialized, isLocked, pullFromCloud, requireLogin } = useAppStore();
@@ -41,6 +41,15 @@ function App() {
       cancelled = true;
     };
   }, [settings.username, isInitialized, pullFromCloud, requireLogin]);
+
+  useEffect(() => {
+    const username = settings.username?.trim();
+    if (!username) return;
+
+    return subscribeAuthenticatedSessionChanges(username, () => {
+      requireLogin();
+    });
+  }, [settings.username, requireLogin]);
 
   if (!settings || !settings.username || isLocked) {
     return <LoginOverlay />;

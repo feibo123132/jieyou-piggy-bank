@@ -1,13 +1,108 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserSettings, Transaction, PiggyBankState } from '@/types';
-import { loginAnonymous, getDb, sendVerificationCode, loginWithEmail } from '@/lib/cloudbase';
+import { loginAnonymous, getDb, sendVerificationCode, loginWithEmail, hasAuthenticatedSession } from '@/lib/cloudbase';
 
 const nowIso = () => new Date().toISOString();
 const toMillis = (value?: string) => {
   if (!value) return 0;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const SYNC_BACKUP_KEY_PREFIX = 'jieyou-storage-backup:';
+const MAX_SYNC_BACKUPS = 12;
+
+type SnapshotMeta = {
+  updatedAtMs: number;
+  transactionCount: number;
+  maxTransactionDate: string;
+};
+
+type CloudSnapshot = {
+  settings: UserSettings;
+  transactions: Transaction[];
+  piggyBank: PiggyBankState;
+  lastProcessedDate: string;
+  updatedAt?: string;
+};
+
+type SyncConflict = {
+  username: string;
+  reason: 'pull_conflict' | 'save_blocked';
+  createdAt: string;
+  localMeta: SnapshotMeta;
+  cloudMeta: SnapshotMeta;
+  cloudSnapshot: CloudSnapshot;
+};
+
+const maxDateFromTransactions = (transactions: Transaction[] = []) => {
+  let max = '';
+  for (const tx of transactions) {
+    const date = tx?.date || '';
+    if (date && date > max) {
+      max = date;
+    }
+  }
+  return max;
+};
+
+const buildSnapshotMeta = (input: { updatedAt?: string; transactions?: Transaction[] }): SnapshotMeta => {
+  const txs = Array.isArray(input.transactions) ? input.transactions : [];
+  return {
+    updatedAtMs: toMillis(input.updatedAt),
+    transactionCount: txs.length,
+    maxTransactionDate: maxDateFromTransactions(txs),
+  };
+};
+
+const isCloudClearlyNewer = (localMeta: SnapshotMeta, cloudMeta: SnapshotMeta) => {
+  if (cloudMeta.maxTransactionDate && localMeta.maxTransactionDate && cloudMeta.maxTransactionDate > localMeta.maxTransactionDate) {
+    return true;
+  }
+  if (cloudMeta.transactionCount > localMeta.transactionCount && cloudMeta.updatedAtMs >= localMeta.updatedAtMs) {
+    return true;
+  }
+  return false;
+};
+
+const shouldPreferLocalSnapshot = (localMeta: SnapshotMeta, cloudMeta: SnapshotMeta) => {
+  if (localMeta.maxTransactionDate && cloudMeta.maxTransactionDate && localMeta.maxTransactionDate < cloudMeta.maxTransactionDate) {
+    return false;
+  }
+  if (localMeta.maxTransactionDate && cloudMeta.maxTransactionDate && localMeta.maxTransactionDate > cloudMeta.maxTransactionDate) {
+    return true;
+  }
+  if (localMeta.updatedAtMs > cloudMeta.updatedAtMs && localMeta.transactionCount >= cloudMeta.transactionCount) {
+    return true;
+  }
+  return false;
+};
+
+const buildLocalSnapshotBackupPayload = (state: Pick<AppState, 'settings' | 'transactions' | 'piggyBank' | 'lastProcessedDate' | 'lastLocalUpdateAt'>) => ({
+  settings: state.settings,
+  transactions: state.transactions,
+  piggyBank: state.piggyBank,
+  lastProcessedDate: state.lastProcessedDate,
+  updatedAt: state.lastLocalUpdateAt || nowIso(),
+});
+
+const saveSafetyBackup = (label: string, payload: unknown) => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const key = `${SYNC_BACKUP_KEY_PREFIX}${nowIso()}:${label}`;
+    localStorage.setItem(key, JSON.stringify(payload));
+    const backupKeys = Object.keys(localStorage)
+      .filter((k) => k.startsWith(SYNC_BACKUP_KEY_PREFIX))
+      .sort();
+    while (backupKeys.length > MAX_SYNC_BACKUPS) {
+      const oldest = backupKeys.shift();
+      if (!oldest) break;
+      localStorage.removeItem(oldest);
+    }
+  } catch (error) {
+    console.warn('[SYNC BACKUP] Failed to save local safety backup.', error);
+  }
 };
 
 let cloudSaveQueue: Promise<void> = Promise.resolve();
@@ -19,6 +114,8 @@ interface AppState {
   lastProcessedDate: string;
   lastLocalUpdateAt: string;
   hasUnsyncedChanges: boolean;
+  syncWarning: string | null;
+  pendingSyncConflict: SyncConflict | null;
 
   // Auth State
   verificationContext: any;
@@ -43,7 +140,11 @@ interface AppState {
   // Modified to return a status instead of just void
   pullFromCloud: (username?: string) => Promise<{ status: 'success' | 'auth_required' | 'not_found' | 'error', data?: any }>;
   verifyAndLoadData: (password: string, pendingData: any) => Promise<boolean>;
-  saveUserState: () => Promise<void>;
+  saveUserState: (options?: { force?: boolean; reason?: string }) => Promise<void>;
+  clearSyncWarning: () => void;
+  forcePushLocalToCloud: () => Promise<void>;
+  useCloudSnapshotFromConflict: () => Promise<void>;
+  clearPendingSyncConflict: () => void;
   requireLogin: () => void;
   
   // State Flags
@@ -79,6 +180,8 @@ export const useAppStore = create<AppState>()(
       lastProcessedDate: new Date().toISOString().split('T')[0],
       lastLocalUpdateAt: nowIso(),
       hasUnsyncedChanges: false,
+      syncWarning: null,
+      pendingSyncConflict: null,
       isInitialized: false,
       isLocked: true, // Default to locked
       verificationContext: null,
@@ -189,9 +292,47 @@ export const useAppStore = create<AppState>()(
         lastProcessedDate: new Date().toISOString().split('T')[0],
         lastLocalUpdateAt: nowIso(),
         hasUnsyncedChanges: false,
+        syncWarning: null,
+        pendingSyncConflict: null,
         isInitialized: false,
         isLocked: true,
       }),
+
+      clearSyncWarning: () => set({ syncWarning: null }),
+      clearPendingSyncConflict: () => set({ pendingSyncConflict: null }),
+
+      forcePushLocalToCloud: async () => {
+        await get().saveUserState({ force: true, reason: 'manual_force_push_local' });
+        const current = get();
+        if (!current.hasUnsyncedChanges) {
+          set({ pendingSyncConflict: null, syncWarning: null });
+        }
+      },
+
+      useCloudSnapshotFromConflict: async () => {
+        const conflict = get().pendingSyncConflict;
+        if (!conflict) return;
+
+        const current = get();
+        saveSafetyBackup(
+          `manual-use-cloud-${conflict.username}`,
+          buildLocalSnapshotBackupPayload(current),
+        );
+
+        const cloudSnapshot = conflict.cloudSnapshot;
+        set({
+          settings: cloudSnapshot.settings,
+          transactions: cloudSnapshot.transactions,
+          piggyBank: cloudSnapshot.piggyBank,
+          lastProcessedDate: cloudSnapshot.lastProcessedDate,
+          lastLocalUpdateAt: cloudSnapshot.updatedAt || nowIso(),
+          hasUnsyncedChanges: false,
+          syncWarning: null,
+          pendingSyncConflict: null,
+          isInitialized: true,
+          isLocked: false,
+        });
+      },
 
       sendAuthCode: async (email: string) => {
         try {
@@ -229,12 +370,13 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      saveUserState: async () => {
+      saveUserState: async (options) => {
         cloudSaveQueue = cloudSaveQueue
           .catch(() => undefined)
           .then(async () => {
             const state = get();
             const safeUsername = state.settings.username?.trim();
+            const forceSave = options?.force === true;
 
             if (!safeUsername || !state.isInitialized) {
               console.error('[SAVE REJECTED] Missing username or app not initialized.', {
@@ -253,11 +395,66 @@ export const useAppStore = create<AppState>()(
               lastProcessedDate: state.lastProcessedDate,
               updatedAt: snapshotUpdatedAt
             };
+            const localMeta = buildSnapshotMeta({
+              updatedAt: snapshotUpdatedAt,
+              transactions: state.transactions,
+            });
 
             console.log('[SAVE STARTING] Uploading queued snapshot...', { username: safeUsername, updatedAt: snapshotUpdatedAt });
 
             try {
+              const hasSession = await hasAuthenticatedSession(safeUsername);
+              if (!hasSession) {
+                console.warn('[SAVE REJECTED] Authenticated session is missing. Login is required before cloud sync.', {
+                  username: safeUsername,
+                });
+                set({ hasUnsyncedChanges: true });
+                get().requireLogin();
+                return;
+              }
+
               const db = getDb();
+              const cloudDoc = await db.collection('transactions').doc(safeUsername).get();
+              const cloudRawData = cloudDoc?.data;
+              const cloudData = Array.isArray(cloudRawData)
+                ? (cloudRawData.length > 0 ? cloudRawData[0] : null)
+                : (cloudRawData || null);
+
+              if (!forceSave && cloudData) {
+                const cloudMeta = buildSnapshotMeta({
+                  updatedAt: cloudData.updatedAt || cloudData.settings?.updatedAt,
+                  transactions: cloudData.transactions,
+                });
+
+                if (isCloudClearlyNewer(localMeta, cloudMeta)) {
+                  saveSafetyBackup(`save-blocked-${safeUsername}`, buildLocalSnapshotBackupPayload(state));
+                  set({
+                    hasUnsyncedChanges: true,
+                    syncWarning: '检测到云端数据比本地更新，已阻止自动覆盖。请先确认再同步。',
+                    pendingSyncConflict: {
+                      username: safeUsername,
+                      reason: 'save_blocked',
+                      createdAt: nowIso(),
+                      localMeta,
+                      cloudMeta,
+                      cloudSnapshot: {
+                        settings: cloudData.settings || DEFAULT_SETTINGS,
+                        transactions: Array.isArray(cloudData.transactions) ? cloudData.transactions : [],
+                        piggyBank: cloudData.piggyBank || DEFAULT_PIGGY_BANK,
+                        lastProcessedDate: cloudData.lastProcessedDate || new Date().toISOString().split('T')[0],
+                        updatedAt: cloudData.updatedAt || cloudData.settings?.updatedAt,
+                      },
+                    },
+                  });
+                  console.warn('[SAVE BLOCKED] Cloud snapshot appears newer; auto-upload aborted.', {
+                    username: safeUsername,
+                    localMeta,
+                    cloudMeta,
+                  });
+                  return;
+                }
+              }
+
               await db.collection('transactions').doc(safeUsername).set(fullState);
 
               set((current) => {
@@ -265,7 +462,7 @@ export const useAppStore = create<AppState>()(
                 if (toMillis(current.lastLocalUpdateAt) > snapshotUpdatedAtMs) {
                   return {};
                 }
-                return { hasUnsyncedChanges: false };
+                return { hasUnsyncedChanges: false, syncWarning: null, pendingSyncConflict: null };
               });
 
               console.log('[SAVE SUCCESS] Snapshot saved to cloud.');
@@ -314,30 +511,71 @@ export const useAppStore = create<AppState>()(
                const cloudUpdatedAt = cloudData.updatedAt || cloudData.settings?.updatedAt;
                const cloudUpdatedAtMs = toMillis(cloudUpdatedAt);
                const hasLocalData = currentState.transactions.length > 0 || currentState.settings.isOnboarded;
-               const shouldKeepLocal = currentState.hasUnsyncedChanges && hasLocalData && localUpdatedAtMs >= cloudUpdatedAtMs;
+               const localMeta = buildSnapshotMeta({
+                 updatedAt: currentState.lastLocalUpdateAt || currentState.settings.updatedAt,
+                 transactions: currentState.transactions,
+               });
+               const cloudMeta = buildSnapshotMeta({
+                 updatedAt: cloudUpdatedAt,
+                 transactions: cloudData.transactions,
+               });
+               const shouldPreferLocal = currentState.hasUnsyncedChanges
+                 && hasLocalData
+                 && localUpdatedAtMs >= cloudUpdatedAtMs
+                 && shouldPreferLocalSnapshot(localMeta, cloudMeta);
 
-               if (shouldKeepLocal) {
-                 console.warn('[PULL MERGE] Local unsynced data is newer. Keep local and push to cloud.');
+               const applyCloudToLocal = (reason: string) => {
+                 if (hasLocalData) {
+                   saveSafetyBackup(`pre-pull-${reason}-${username}`, buildLocalSnapshotBackupPayload(currentState));
+                 }
                  set({
-                   settings: { ...currentState.settings, username },
+                   settings: cloudData.settings,
+                   transactions: cloudData.transactions,
+                   piggyBank: cloudData.piggyBank,
+                   lastProcessedDate: cloudData.lastProcessedDate,
+                   lastLocalUpdateAt: cloudUpdatedAt || nowIso(),
+                   hasUnsyncedChanges: false,
+                   syncWarning: reason === 'cloud_newer'
+                     ? '已优先使用云端较新的数据，并保留了一份本地安全备份。'
+                     : null,
+                   pendingSyncConflict: null,
                    isInitialized: true,
                    isLocked: false
                  });
-                 await get().saveUserState();
+               };
+
+               if (shouldPreferLocal) {
+                 console.warn('[PULL MERGE] Local snapshot appears newer. Keep local without auto-pushing cloud overwrite.', {
+                   username,
+                   localMeta,
+                   cloudMeta,
+                 });
+                 set({
+                   settings: { ...currentState.settings, username },
+                   hasUnsyncedChanges: true,
+                   syncWarning: '检测到本地与云端存在差异，已保留本地并暂停自动回写，请确认后再手动同步。',
+                   pendingSyncConflict: {
+                     username,
+                     reason: 'pull_conflict',
+                     createdAt: nowIso(),
+                     localMeta,
+                     cloudMeta,
+                     cloudSnapshot: {
+                       settings: cloudData.settings || DEFAULT_SETTINGS,
+                       transactions: Array.isArray(cloudData.transactions) ? cloudData.transactions : [],
+                       piggyBank: cloudData.piggyBank || DEFAULT_PIGGY_BANK,
+                       lastProcessedDate: cloudData.lastProcessedDate || new Date().toISOString().split('T')[0],
+                       updatedAt: cloudUpdatedAt,
+                     },
+                   },
+                   isInitialized: true,
+                   isLocked: false
+                 });
                  return { status: 'success' };
                }
 
-               // Cloud data is newer/equal, safe to load.
-               set({
-                 settings: cloudData.settings,
-                 transactions: cloudData.transactions,
-                 piggyBank: cloudData.piggyBank,
-                 lastProcessedDate: cloudData.lastProcessedDate,
-                 lastLocalUpdateAt: cloudUpdatedAt || nowIso(),
-                 hasUnsyncedChanges: false,
-                 isInitialized: true,
-                 isLocked: false
-               });
+               // Cloud snapshot is newer or safer; load it and keep local backup for recovery.
+               applyCloudToLocal(isCloudClearlyNewer(localMeta, cloudMeta) ? 'cloud_newer' : 'cloud_preferred');
                return { status: 'success' };
             }
           } else {
@@ -345,6 +583,8 @@ export const useAppStore = create<AppState>()(
             // Critical: mark initialized here, otherwise all later saves stay blocked.
             set((state) => ({
               settings: { ...state.settings, username },
+              syncWarning: null,
+              pendingSyncConflict: null,
               isInitialized: true,
               isLocked: false
             }));
@@ -365,7 +605,7 @@ export const useAppStore = create<AppState>()(
       },
 
       requireLogin: () => {
-        set({ isLocked: true, isInitialized: false });
+        set({ isLocked: true, isInitialized: false, syncWarning: null, pendingSyncConflict: null });
       },
 
       verifyAndLoadData: async (password: string, pendingData: any) => {
@@ -387,6 +627,8 @@ export const useAppStore = create<AppState>()(
               lastProcessedDate: pendingData.lastProcessedDate,
               lastLocalUpdateAt: pendingData.updatedAt || pendingData.settings?.updatedAt || nowIso(),
               hasUnsyncedChanges: false,
+              syncWarning: null,
+              pendingSyncConflict: null,
               isInitialized: true,
               isLocked: false
            });
@@ -408,5 +650,3 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
-
-

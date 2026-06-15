@@ -51,26 +51,58 @@ const isAnonymousLoginState = (loginState: any): boolean => {
   return loginType.includes('anonymous');
 };
 
+const getLoginStateEmail = (loginState: any): string => {
+  return String(
+    loginState?.user?.email ||
+    loginState?.email ||
+    loginState?.user?.emailAddress ||
+    ''
+  ).trim().toLowerCase();
+};
+
+export const isAuthenticatedLoginState = (loginState: any, expectedEmail?: string) => {
+  if (!loginState || isAnonymousLoginState(loginState)) return false;
+
+  const target = expectedEmail?.trim().toLowerCase();
+  if (!target) return true;
+
+  const stateEmail = getLoginStateEmail(loginState);
+  // If SDK does not expose email for this session, force explicit re-login.
+  return Boolean(stateEmail && stateEmail === target);
+};
+
 export const hasAuthenticatedSession = async (expectedEmail?: string) => {
   if (!auth) return false;
   try {
     const loginState = await auth.getLoginState();
-    if (!loginState) return false;
-    if (isAnonymousLoginState(loginState)) return false;
-
-    const stateEmail = String(loginState?.user?.email || '').trim().toLowerCase();
-    if (expectedEmail) {
-      const target = expectedEmail.trim().toLowerCase();
-      // If SDK does not expose email for this session, force explicit re-login.
-      if (!stateEmail) return false;
-      return stateEmail === target;
-    }
-
-    return true;
+    return isAuthenticatedLoginState(loginState, expectedEmail);
   } catch (error) {
     console.error('[TCB] Failed to check login state:', error);
     return false;
   }
+};
+
+export const subscribeAuthenticatedSessionChanges = (
+  expectedEmail: string | undefined,
+  onInvalidated: () => void,
+) => {
+  if (!auth || typeof auth.onLoginStateChanged !== 'function') {
+    return () => {};
+  }
+
+  let hasSeenAuthenticatedSession = false;
+  const unsubscribe = auth.onLoginStateChanged((loginState: any) => {
+    if (isAuthenticatedLoginState(loginState, expectedEmail)) {
+      hasSeenAuthenticatedSession = true;
+      return;
+    }
+
+    if (hasSeenAuthenticatedSession || expectedEmail?.trim()) {
+      onInvalidated();
+    }
+  });
+
+  return typeof unsubscribe === 'function' ? unsubscribe : () => {};
 };
 
 export const getDb = () => {

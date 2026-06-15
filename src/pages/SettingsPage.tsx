@@ -18,7 +18,18 @@ import { format, getDaysInMonth } from 'date-fns';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { settings, updateSettings, transactions, saveUserState } = useAppStore();
+  const {
+    settings,
+    updateSettings,
+    transactions,
+    saveUserState,
+    syncWarning,
+    clearSyncWarning,
+    pendingSyncConflict,
+    forcePushLocalToCloud,
+    useCloudSnapshotFromConflict,
+    clearPendingSyncConflict,
+  } = useAppStore();
   const { totalVariableSpent } = useBudgetSummary();
   const currentMonthKey = format(new Date(), 'yyyy-MM');
   
@@ -272,6 +283,54 @@ const SettingsPage: React.FC = () => {
       </div>
 
       <Card>
+        {syncWarning && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <div className="flex items-start justify-between gap-3">
+              <span>{syncWarning}</span>
+              <button
+                type="button"
+                onClick={clearSyncWarning}
+                className="shrink-0 text-xs text-amber-700 underline hover:text-amber-900"
+              >
+                知道了
+              </button>
+            </div>
+          </div>
+        )}
+        {pendingSyncConflict && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
+            <p className="font-medium">检测到同步冲突，请手动确认：</p>
+            <p className="mt-1 text-xs text-red-800">
+              本地：{pendingSyncConflict.localMeta.maxTransactionDate || '无'} / {pendingSyncConflict.localMeta.transactionCount} 条
+              ，云端：{pendingSyncConflict.cloudMeta.maxTransactionDate || '无'} / {pendingSyncConflict.cloudMeta.transactionCount} 条
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={forcePushLocalToCloud}
+              >
+                以本地为准覆盖云端
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={useCloudSnapshotFromConflict}
+              >
+                以云端为准覆盖本地
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={clearPendingSyncConflict}
+              >
+                稍后再处理
+              </Button>
+            </div>
+          </div>
+        )}
         <h2 className="text-lg font-semibold mb-4 text-gray-700">预算设置</h2>
         <div className="space-y-4">
           <Input

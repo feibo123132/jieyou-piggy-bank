@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .env.local
+
+# Local recovery/temp profiles
+.recovery-localstorage/
+.recovery-vss-*/
+.tmp-recover-profile/
