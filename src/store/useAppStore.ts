@@ -1,23 +1,27 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserSettings, Transaction, PiggyBankState } from '@/types';
-import { loginAnonymous, getDb, sendVerificationCode, loginWithEmail, hasAuthenticatedSession } from '@/lib/cloudbase';
+import {
+  loginAnonymous,
+  getDb,
+  sendVerificationCode,
+  loginWithEmail,
+  hasAuthenticatedSession,
+  loginWithPassword,
+  resetPasswordWithEmailCode,
+} from '@/lib/cloudbase';
+import {
+  buildSnapshotMeta,
+  getSnapshotUpdatedAtMs,
+  isCloudClearlyNewer,
+  shouldPreferLocalSnapshot,
+} from '@/lib/syncSnapshots';
+import type { SnapshotMeta } from '@/lib/syncSnapshots';
 
 const nowIso = () => new Date().toISOString();
-const toMillis = (value?: string) => {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-};
 
 const SYNC_BACKUP_KEY_PREFIX = 'jieyou-storage-backup:';
 const MAX_SYNC_BACKUPS = 12;
-
-type SnapshotMeta = {
-  updatedAtMs: number;
-  transactionCount: number;
-  maxTransactionDate: string;
-};
 
 type CloudSnapshot = {
   settings: UserSettings;
@@ -34,49 +38,6 @@ type SyncConflict = {
   localMeta: SnapshotMeta;
   cloudMeta: SnapshotMeta;
   cloudSnapshot: CloudSnapshot;
-};
-
-const maxDateFromTransactions = (transactions: Transaction[] = []) => {
-  let max = '';
-  for (const tx of transactions) {
-    const date = tx?.date || '';
-    if (date && date > max) {
-      max = date;
-    }
-  }
-  return max;
-};
-
-const buildSnapshotMeta = (input: { updatedAt?: string; transactions?: Transaction[] }): SnapshotMeta => {
-  const txs = Array.isArray(input.transactions) ? input.transactions : [];
-  return {
-    updatedAtMs: toMillis(input.updatedAt),
-    transactionCount: txs.length,
-    maxTransactionDate: maxDateFromTransactions(txs),
-  };
-};
-
-const isCloudClearlyNewer = (localMeta: SnapshotMeta, cloudMeta: SnapshotMeta) => {
-  if (cloudMeta.maxTransactionDate && localMeta.maxTransactionDate && cloudMeta.maxTransactionDate > localMeta.maxTransactionDate) {
-    return true;
-  }
-  if (cloudMeta.transactionCount > localMeta.transactionCount && cloudMeta.updatedAtMs >= localMeta.updatedAtMs) {
-    return true;
-  }
-  return false;
-};
-
-const shouldPreferLocalSnapshot = (localMeta: SnapshotMeta, cloudMeta: SnapshotMeta) => {
-  if (localMeta.maxTransactionDate && cloudMeta.maxTransactionDate && localMeta.maxTransactionDate < cloudMeta.maxTransactionDate) {
-    return false;
-  }
-  if (localMeta.maxTransactionDate && cloudMeta.maxTransactionDate && localMeta.maxTransactionDate > cloudMeta.maxTransactionDate) {
-    return true;
-  }
-  if (localMeta.updatedAtMs > cloudMeta.updatedAtMs && localMeta.transactionCount >= cloudMeta.transactionCount) {
-    return true;
-  }
-  return false;
 };
 
 const buildLocalSnapshotBackupPayload = (state: Pick<AppState, 'settings' | 'transactions' | 'piggyBank' | 'lastProcessedDate' | 'lastLocalUpdateAt'>) => ({
@@ -135,6 +96,8 @@ interface AppState {
   // Auth Actions
   sendAuthCode: (email: string) => Promise<boolean>;
   loginAndSync: (email: string, code: string) => Promise<void>;
+  loginWithPasswordAndSync: (email: string, password: string) => Promise<void>;
+  setPasswordAndSync: (email: string, code: string, newPassword: string) => Promise<void>;
   
   // Cloud Sync Actions
   // Modified to return a status instead of just void
@@ -302,6 +265,11 @@ export const useAppStore = create<AppState>()(
       clearPendingSyncConflict: () => set({ pendingSyncConflict: null }),
 
       forcePushLocalToCloud: async () => {
+        const resolvedAt = nowIso();
+        set({
+          lastLocalUpdateAt: resolvedAt,
+          hasUnsyncedChanges: true,
+        });
         await get().saveUserState({ force: true, reason: 'manual_force_push_local' });
         const current = get();
         if (!current.hasUnsyncedChanges) {
@@ -370,6 +338,37 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      loginWithPasswordAndSync: async (email: string, password: string) => {
+        await loginWithPassword({ email, password });
+
+        const normalizedEmail = email.trim();
+        set((state) => ({
+          settings: { ...state.settings, username: normalizedEmail },
+          verificationContext: null,
+        }));
+
+        const pullResult = await get().pullFromCloud(normalizedEmail);
+        if (pullResult.status === 'not_found') {
+          set({ isInitialized: true, isLocked: false });
+          await get().saveUserState();
+        }
+      },
+
+      setPasswordAndSync: async (email: string, code: string, newPassword: string) => {
+        const context = get().verificationContext;
+        if (!context) throw new Error('请先发送验证码。');
+
+        await resetPasswordWithEmailCode({
+          email,
+          code,
+          newPassword,
+          verificationContext: context,
+        });
+
+        set({ verificationContext: null });
+        await get().loginWithPasswordAndSync(email, newPassword);
+      },
+
       saveUserState: async (options) => {
         cloudSaveQueue = cloudSaveQueue
           .catch(() => undefined)
@@ -387,7 +386,7 @@ export const useAppStore = create<AppState>()(
             }
 
             const snapshotUpdatedAt = state.lastLocalUpdateAt || nowIso();
-            const snapshotUpdatedAtMs = toMillis(snapshotUpdatedAt);
+            const snapshotUpdatedAtMs = getSnapshotUpdatedAtMs(snapshotUpdatedAt);
             const fullState = {
               settings: state.settings,
               transactions: state.transactions,
@@ -459,7 +458,7 @@ export const useAppStore = create<AppState>()(
 
               set((current) => {
                 // Newer local edits appeared while this request was in flight.
-                if (toMillis(current.lastLocalUpdateAt) > snapshotUpdatedAtMs) {
+                if (getSnapshotUpdatedAtMs(current.lastLocalUpdateAt) > snapshotUpdatedAtMs) {
                   return {};
                 }
                 return { hasUnsyncedChanges: false, syncWarning: null, pendingSyncConflict: null };
@@ -467,7 +466,12 @@ export const useAppStore = create<AppState>()(
 
               console.log('[SAVE SUCCESS] Snapshot saved to cloud.');
             } catch (error) {
-              set({ hasUnsyncedChanges: true });
+              set({
+                hasUnsyncedChanges: true,
+                syncWarning: forceSave
+                  ? '以本地为准覆盖云端失败，请确认当前账号仍处于登录状态，或稍后重试。'
+                  : '云端同步失败，当前修改已保留在本地，请稍后重试。',
+              });
               console.error('[SAVE FAILED] Failed to save snapshot to cloud.', error);
             }
           });
@@ -507,9 +511,9 @@ export const useAppStore = create<AppState>()(
                return { status: 'auth_required', data: cloudData };
             } else {
                const currentState = get();
-               const localUpdatedAtMs = toMillis(currentState.lastLocalUpdateAt || currentState.settings.updatedAt);
+               const localUpdatedAtMs = getSnapshotUpdatedAtMs(currentState.lastLocalUpdateAt || currentState.settings.updatedAt);
                const cloudUpdatedAt = cloudData.updatedAt || cloudData.settings?.updatedAt;
-               const cloudUpdatedAtMs = toMillis(cloudUpdatedAt);
+               const cloudUpdatedAtMs = getSnapshotUpdatedAtMs(cloudUpdatedAt);
                const hasLocalData = currentState.transactions.length > 0 || currentState.settings.isOnboarded;
                const localMeta = buildSnapshotMeta({
                  updatedAt: currentState.lastLocalUpdateAt || currentState.settings.updatedAt,

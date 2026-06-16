@@ -153,6 +153,91 @@ export const loginWithEmail = async (params: { email: string; code: string; veri
   }
 };
 
+export const loginWithPassword = async (params: { email: string; password: string }) => {
+  if (!auth) throw new Error('[TCB Fatal] Auth is not initialized. Please check SDK config.');
+  const email = params.email.trim();
+  const { password } = params;
+
+  if (typeof auth.signInWithPassword === 'function') {
+    const result = await auth.signInWithPassword({ email, username: email, password });
+    if (result?.error) throw result.error;
+    return auth.currentUser || result;
+  }
+
+  if (typeof auth.signIn === 'function') {
+    const result = await auth.signIn({ username: email, email, password });
+    if (result?.error) throw result.error;
+    return auth.currentUser || result;
+  }
+
+  if (typeof auth.signInWithEmailAndPassword === 'function') {
+    return auth.signInWithEmailAndPassword(email, password);
+  }
+
+  throw new Error('当前 CloudBase SDK 不支持邮箱密码登录，请检查 SDK 版本。');
+};
+
+export const getVerificationId = (verificationContext: any): string => {
+  if (!verificationContext || typeof verificationContext !== 'object') return '';
+  return String(
+    verificationContext.verification_id ||
+    verificationContext.verificationId ||
+    verificationContext.id ||
+    ''
+  ).trim();
+};
+
+export const getVerificationToken = (verifyResult: any): string => {
+  if (!verifyResult || typeof verifyResult !== 'object') return '';
+  return String(
+    verifyResult.verification_token ||
+    verifyResult.verificationToken ||
+    verifyResult.token ||
+    ''
+  ).trim();
+};
+
+export const isPasswordLoginDisabledError = (error: unknown) => {
+  const normalized = JSON.stringify(error || {}).toLowerCase();
+  return normalized.includes('username/password') ||
+    normalized.includes('email/password') ||
+    normalized.includes('password login') ||
+    normalized.includes('identity source') ||
+    normalized.includes('sign_in_method_not_found');
+};
+
+export const resetPasswordWithEmailCode = async (params: {
+  email: string;
+  code: string;
+  newPassword: string;
+  verificationContext: any;
+}) => {
+  if (!auth) throw new Error('[TCB Fatal] Auth is not initialized. Please check SDK config.');
+  if (typeof auth.verify !== 'function' || typeof auth.resetPassword !== 'function') {
+    throw new Error('当前 CloudBase SDK 不支持设置密码，请检查 SDK 版本。');
+  }
+
+  const verificationId = getVerificationId(params.verificationContext);
+  if (!verificationId) {
+    throw new Error('验证码上下文已失效，请重新发送验证码。');
+  }
+
+  const verifyResult = await auth.verify({
+    verification_id: verificationId,
+    verification_code: params.code.trim(),
+  });
+  const verificationToken = getVerificationToken(verifyResult);
+  if (!verificationToken) {
+    throw new Error('验证成功但未获取到密码重置令牌。');
+  }
+
+  await auth.resetPassword({
+    email: params.email.trim(),
+    new_password: params.newPassword,
+    verification_token: verificationToken,
+  });
+};
+
 export const saveUserState = async (username: string, fullState: any) => {
   if (!db || !auth) return;
   const safeUsername = username?.trim();
