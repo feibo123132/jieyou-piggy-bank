@@ -126,7 +126,7 @@ export const Navbar: React.FC = () => {
                                className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
                            >
                                <span className="text-lg leading-none w-[18px] text-center">💸</span>
-                               <span>非固定支出</span>
+                               <span>偶发支出</span>
                            </button>
 
                            <button 
@@ -206,7 +206,7 @@ export const Navbar: React.FC = () => {
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 flex items-center">
                     <span className="text-2xl mr-2">💸</span>
-                    非固定支出
+                    偶发支出
                   </h2>
                 </div>
                 <button 
@@ -246,13 +246,13 @@ export const Navbar: React.FC = () => {
 
                 {unfixedTransactions.length === 0 ? (
                   <div className="text-center py-10 text-gray-400">
-                    <p>{format(unfixedModalDate, 'MM月')}暂无非固定支出记录</p>
+                    <p>{format(unfixedModalDate, 'MM月')}暂无偶发支出记录</p>
                   </div>
                 ) : (
                   unfixedTransactions.map(t => (
                     <div key={t.id} className="bg-gray-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100">
                       <div>
-                        <p className="font-medium text-gray-800">{t.note || '非固定支出'}</p>
+                        <p className="font-medium text-gray-800">{t.note || '偶发支出'}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{format(new Date(t.date), 'MM-dd')}</p>
                       </div>
                       <span className="font-bold text-gray-900">-¥{formatCurrency(t.amount)}</span>

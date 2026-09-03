@@ -43,4 +43,27 @@ describe('fixed expense helpers', () => {
     ]);
     expect(normalized).toEqual([{ month: '2026-06', expenses: [{ id: 'rent', label: '房租', amount: 630 }] }]);
   });
+
+  // 新增：category 字段透传
+  it('passes through the optional `category` field on each fixed expense', () => {
+    const mixed: FixedExpense[] = [
+      { id: 'rent', label: '房租', amount: 700, category: 'necessary' },
+      { id: 'netflix', label: 'Netflix', amount: 78, category: 'optional' },
+      { id: 'luxury', label: '爱马仕', amount: 9999, category: 'unnatural' },
+      { id: 'legacy', label: '老格式', amount: 120 }, // 无 category
+    ];
+    const snapshots: MonthlyFixedExpenseSnapshot[] = [
+      { month: '2026-06', expenses: mixed },
+    ];
+
+    // getFixedExpensesForMonth：category 完整保留（不影响后续断言）
+    expect(getFixedExpensesForMonth(snapshots, '2026-06', legacyFixed)).toEqual(mixed);
+
+    // 即使源没传 category，老数据也不应丢失（向后兼容）
+    expect(getFixedExpensesForMonth(snapshots, '2026-06', legacyFixed)[3].category).toBeUndefined();
+
+    // saveFixedExpensesForMonth：保存快照后从快照重新读出来仍是同一份（且 category 透传）
+    const saved = saveFixedExpensesForMonth([], '2026-06', mixed, false);
+    expect(getFixedExpensesForMonth(saved, '2026-06', legacyFixed)).toEqual(mixed);
+  });
 });

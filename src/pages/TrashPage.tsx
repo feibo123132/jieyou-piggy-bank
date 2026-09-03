@@ -73,10 +73,12 @@ const TrashPage: React.FC = () => {
             <Card key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center space-x-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-                    t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
-                    t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                    t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' :
+                    t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' :
+                    t.tags.includes('unnatural') ? 'bg-rose-100 text-rose-600' :
+                    'bg-orange-100 text-orange-600'
                   }`}>
-                    {t.tags.includes('fixed') ? '固' : t.tags.includes('necessary') ? '必' : '非'}
+                    {t.tags.includes('fixed') ? '固' : t.tags.includes('necessary') ? '必' : t.tags.includes('unnatural') ? '毒' : '非'}
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
@@ -86,7 +88,7 @@ const TrashPage: React.FC = () => {
                      </span>
                   </div>
                   <p className="text-sm text-gray-500 mt-1 line-clamp-1">
-                    {t.note || (t.tags.includes('fixed') ? '固定支出' : '日常消费')}
+                    {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('necessary') ? '自然且必要' : t.tags.includes('unnatural') ? '不自然且不必要' : '自然非必要')}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
                     删除于: {format(new Date(t.deletedAt!), 'yyyy-MM-dd HH:mm')}

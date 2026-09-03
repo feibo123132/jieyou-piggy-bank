@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format, getDaysInMonth } from 'date-fns';
-import { Plus, Check, Wallet, Zap } from 'lucide-react';
+import { format } from 'date-fns';
+import { Check } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
-import { usePiggyBankLogic } from '@/hooks/usePiggyBankLogic';
-import { PiggyBankVisual, LEVEL_STYLES } from '@/components/PiggyBankVisual';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
 import { TransactionTag } from '@/types';
 import { getFixedExpensesForMonth } from '@/lib/fixedExpenses';
 import {
@@ -19,11 +16,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { settings, transactions, piggyBank, addTransaction } = useAppStore();
+  const { settings, transactions, addTransaction } = useAppStore();
   const { monthlyRemaining } = useBudgetSummary();
-  const { currentAmount: piggyDisplayAmount, capacity: piggyCapacity } = usePiggyBankLogic();
   const [showAdd, setShowAdd] = useState(false);
-  
+
   // Transaction Form State
   const [amount, setAmount] = useState('');
   const [selectedTags, setSelectedTags] = useState<TransactionTag[]>(getDefaultTransactionTags());
@@ -33,42 +29,70 @@ const DashboardPage: React.FC = () => {
   // Calculations
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
-  const daysInMonth = getDaysInMonth(today);
   const currentMonthKey = format(today, 'yyyy-MM');
-  const fixedTotal = getFixedExpensesForMonth(
+  const fixedExpensesForMonth = getFixedExpensesForMonth(
     settings.fixedExpensesByMonth,
     currentMonthKey,
     settings.fixedExpenses,
-  ).reduce((sum, e) => sum + e.amount, 0);
-  
+  );
+  const currentMonthFixedTotal = fixedExpensesForMonth.reduce((sum, e) => sum + e.amount, 0);
+
   // Use manual daily budget if set, otherwise fallback to calculated
   // Calculated fallback: (Monthly - Fixed) / 30
-  const calculatedDaily = Math.max(0, (settings.monthlyBudget - fixedTotal) / 30);
-  const dailyBudget = settings.dailyBudget && settings.dailyBudget > 0 
-    ? settings.dailyBudget 
+  const calculatedDaily = Math.max(0, (settings.monthlyBudget - currentMonthFixedTotal) / 30);
+  const dailyBudget = settings.dailyBudget && settings.dailyBudget > 0
+    ? settings.dailyBudget
     : calculatedDaily;
-  
+
   const todayTransactions = transactions.filter(t => t.date === todayStr && !t.deletedAt);
   // Filter out fixed expenses for daily budget consumption
   const todayConsumed = todayTransactions
     .filter(t => !t.tags.includes('fixed'))
     .reduce((sum, t) => sum + t.amount, 0);
-  
+
   const todayRemaining = dailyBudget - todayConsumed;
-  const todayPotentialSavings = Math.max(0, todayRemaining);
-  
-  // Monthly Remaining Calculation
-  // We use the hook value now
-  // const currentMonthTransactions = transactions.filter(t => t.date.startsWith(format(today, 'yyyy-MM')));
-  // const totalSpentThisMonth = currentMonthTransactions.reduce((sum, t) => sum + t.amount, 0);
-  // const monthlyRemaining = Math.max(0, settings.monthlyBudget - totalSpentThisMonth);
 
-  // Total display in Piggy Bank (Confirmed Only to avoid user confusion)
-  // We do NOT include todayPotentialSavings visually until it is processed the next day
-  const isOverCapacity = piggyDisplayAmount >= piggyCapacity;
+  // Monthly breakdown by category
+  const monthTransactions = transactions.filter(t =>
+    t.date.startsWith(currentMonthKey) && !t.deletedAt,
+  );
+  // 「非固定支出」卡片（统计口径）= 本月所有不包含 fixed 标签的交易合计
+  // （与 CalendarPage 的"本月非固定支出" widget 口径一致，自动归集，无需手动打 tag）
+  // 注意：这与手动 tag「偶发支出」(unfixed) 不同——后者仅统计用户主动标记偶发的交易
+  const unfixedSpent = monthTransactions
+    .filter(t => !t.tags.includes('fixed'))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const monthUnfixedCount = monthTransactions.filter(t => !t.tags.includes('fixed')).length;
 
-  // Level Config
-  const levelConfig = LEVEL_STYLES[piggyCapacity] || (piggyCapacity > 500 ? LEVEL_STYLES[500] : LEVEL_STYLES[30]);
+  // 自然且必要 = 本月带 necessary 标签的交易 + 月度固定支出里分类为「必要」的合计
+  // （固定支出本身是计划内的"自然且必要"消费，纳入此桶整体看待）
+  const necessaryFixedTotal = fixedExpensesForMonth
+    .filter(e => (e.category ?? 'necessary') === 'necessary')
+    .reduce((sum, e) => sum + e.amount, 0);
+  const optionalFixedTotal = fixedExpensesForMonth
+    .filter(e => e.category === 'optional')
+    .reduce((sum, e) => sum + e.amount, 0);
+  const unnaturalFixedTotal = fixedExpensesForMonth
+    .filter(e => e.category === 'unnatural')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const necessarySpent = monthTransactions
+    .filter(t => t.tags.includes('necessary'))
+    .reduce((sum, t) => sum + t.amount, 0) + necessaryFixedTotal;
+  const monthNecessaryCount = monthTransactions.filter(t => t.tags.includes('necessary')).length
+    + fixedExpensesForMonth.filter(e => (e.category ?? 'necessary') === 'necessary').length;
+
+  const optionalSpent = monthTransactions
+    .filter(t => t.tags.includes('optional'))
+    .reduce((sum, t) => sum + t.amount, 0) + optionalFixedTotal;
+  const monthOptionalCount = monthTransactions.filter(t => t.tags.includes('optional')).length
+    + fixedExpensesForMonth.filter(e => e.category === 'optional').length;
+
+  const unnaturalSpent = monthTransactions
+    .filter(t => t.tags.includes('unnatural'))
+    .reduce((sum, t) => sum + t.amount, 0) + unnaturalFixedTotal;
+  const monthUnnaturalCount = monthTransactions.filter(t => t.tags.includes('unnatural')).length
+    + fixedExpensesForMonth.filter(e => e.category === 'unnatural').length;
 
   const handleAddTransaction = () => {
     if (!amount) return;
@@ -123,7 +147,7 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-xl font-bold text-gray-800 font-rounded">
             {format(today, 'MM月dd日')}
           </h1>
-          <p className="text-sm text-gray-500">小金库又存了一笔，美得很！</p>
+          <p className="text-sm text-gray-500">在幸福和健康的前提下，人每月需要花多少钱</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400">今日预算</p>
@@ -155,130 +179,111 @@ const DashboardPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Piggy Bank Visual */}
-      <section className="py-4 relative">
-        <div className="text-center mb-2">
-          <p className="text-sm text-gray-500">
-            当前存钱罐：<span style={{ color: levelConfig.stroke, fontWeight: 'bold' }}>{levelConfig.name}</span> (等级 {piggyCapacity})
-          </p>
-          {isOverCapacity && (
-            <motion.p 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-secondary font-bold text-sm"
-            >
-              🎉 已满！明日自动升级！
-            </motion.p>
-          )}
+      {/* Monthly Expense Categories */}
+      <section className="space-y-4">
+        <div className="flex justify-between items-center px-1">
+          <h2 className="text-lg font-bold text-gray-800">本月支出分布</h2>
+          <span className="text-xs text-gray-400">{format(today, 'yyyy 年 MM 月')}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Fixed Expense Card */}
+          <Card className="bg-purple-50 border-purple-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 shrink-0">
+                <span className="text-sm font-bold">固</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-700 truncate">固定支出</h3>
+                <p className="text-[10px] text-gray-400 leading-tight">计划内 · 按月固定</p>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ¥{formatCurrency(currentMonthFixedTotal)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {fixedExpensesForMonth.length} 个条目
+            </p>
+          </Card>
+
+          {/* Unfixed Expense Card */}
+          <Card className="bg-indigo-50 border-indigo-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                <span className="text-sm font-bold">非固</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-700 truncate">非固定支出</h3>
+                <p className="text-[10px] text-gray-400 leading-tight">计划外 · 浮动</p>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ¥{formatCurrency(unfixedSpent)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {monthUnfixedCount} 笔记录
+            </p>
+          </Card>
         </div>
 
-        {/* Piggy Bank Collection Grid */}
-        <div className="flex flex-col items-center gap-y-4 max-w-2xl mx-auto px-4 mb-24">
-          
-          {/* Row 1: 30, 50, 100 */}
-          <div className="flex flex-wrap justify-center items-end gap-x-8">
-            {[30, 50, 100].map((level) => {
-              // Logic for visual state
-              let displayAmount = 0;
-              let isCurrent = false;
-              let isCompleted = false;
+        <div className="grid grid-cols-3 gap-3">
+          {/* Necessary Expense Card */}
+          <Card className="bg-blue-50 border-blue-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                <span className="text-sm font-bold">必</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-700 truncate">自然且必要</h3>
+                <p className="text-[10px] text-gray-400 leading-tight">生活刚需</p>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ¥{formatCurrency(necessarySpent)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {monthNecessaryCount} 笔记录
+            </p>
+          </Card>
 
-              if (piggyCapacity > level) {
-                displayAmount = level; // Full
-                isCompleted = true;
-              } else if (piggyCapacity === level) {
-                displayAmount = piggyDisplayAmount; // Actual progress
-                isCurrent = true;
-              } else {
-                displayAmount = 0; // Locked
-              }
+          {/* Optional Expense Card */}
+          <Card className="bg-orange-50 border-orange-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                <span className="text-sm font-bold">非</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-700 truncate">自然非必要</h3>
+                <p className="text-[10px] text-gray-400 leading-tight">弹性消费</p>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ¥{formatCurrency(optionalSpent)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {monthOptionalCount} 笔记录
+            </p>
+          </Card>
 
-              const opacity = isCurrent || isCompleted ? 1 : 0.3;
-              const filter = isCurrent || isCompleted ? 'none' : 'grayscale(100%)';
-
-              return (
-                <div key={level} className="flex flex-col items-center" style={{ opacity, filter }}>
-                  <div className="relative" style={{ 
-                    width: '120px', 
-                    height: '140px',
-                    transform: 'scale(0.8)',
-                    marginBottom: '-20px' 
-                  }}>
-                    <PiggyBankVisual 
-                      currentAmount={displayAmount} 
-                      capacity={level} 
-                    />
-                  </div>
-                  <div className="text-xs font-medium text-gray-500 mt-2">
-                     {isCompleted ? '已完成' : (isCurrent ? '进行中' : '未解锁')}
-                  </div>
-                  <div className="text-xs font-bold text-gray-400">
-                     Lv.{level}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Row 2: 200, 500 */}
-          <div className="flex flex-wrap justify-center items-end gap-x-24">
-            {[200, 500].map((level) => {
-              let displayAmount = 0;
-              let isCurrent = false;
-              let isCompleted = false;
-
-              if (piggyCapacity > level) {
-                displayAmount = level; // Full
-                isCompleted = true;
-              } else if (piggyCapacity === level) {
-                displayAmount = piggyDisplayAmount; // Actual progress
-                isCurrent = true;
-              } else {
-                displayAmount = 0; // Locked
-              }
-
-              const opacity = isCurrent || isCompleted ? 1 : 0.3;
-              const filter = isCurrent || isCompleted ? 'none' : 'grayscale(100%)';
-
-              return (
-                <div key={level} className="flex flex-col items-center" style={{ opacity, filter }}>
-                  <div className="relative" style={{ 
-                    width: level === 500 ? '160px' : '140px', 
-                    height: level === 500 ? '160px' : '150px',
-                    transform: 'scale(0.9)',
-                    marginBottom: '-20px' 
-                  }}>
-                    <PiggyBankVisual 
-                      currentAmount={displayAmount} 
-                      capacity={level} 
-                    />
-                  </div>
-                  <div className="text-xs font-medium text-gray-500 mt-2">
-                     {isCompleted ? '已完成' : (isCurrent ? '进行中' : '未解锁')}
-                  </div>
-                  <div className="text-xs font-bold text-gray-400">
-                     Lv.{level}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          
+          {/* Unnatural & Unnecessary Expense Card */}
+          <Card className="bg-rose-50 border-rose-100">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                <span className="text-sm font-bold">毒</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-gray-700 truncate">不自然且不必要</h3>
+                <p className="text-[10px] text-gray-400 leading-tight">毒素消耗</p>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              ¥{formatCurrency(unnaturalSpent)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {monthUnnaturalCount} 笔记录
+            </p>
+          </Card>
         </div>
       </section>
-
-      {/* Add Transaction Button */}
-      <div className="fixed bottom-8 left-0 right-0 px-4 flex justify-center z-40 md:relative md:bottom-auto md:px-0">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowAdd(true)}
-          className="bg-gray-900 text-white rounded-full p-4 shadow-lg shadow-gray-400 flex items-center space-x-2 px-6"
-        >
-          <Plus size={24} />
-          <span className="font-semibold">记一笔</span>
-        </motion.button>
-      </div>
 
       {/* Add Transaction Modal/Sheet */}
       <AnimatePresence>
@@ -335,30 +340,43 @@ const DashboardPage: React.FC = () => {
 
                 <div>
                   <label className="text-sm text-gray-500 mb-2 block">标签</label>
-                  <div className="flex space-x-3">
-                    <TagButton 
-                      label="必要支出" 
-                      active={selectedTags.includes('necessary')} 
+                  <div className="grid grid-cols-6 gap-3">
+                    {/* Row 1: 三档必要性互斥选择 */}
+                    <TagButton
+                      label="自然且必要"
+                      active={selectedTags.includes('necessary')}
                       onClick={() => toggleTag('necessary')}
                       icon={<span className="text-lg">🍚</span>}
+                      className="col-span-2"
                     />
-                    <TagButton 
-                      label="非固定支出" 
-                      active={selectedTags.includes('unfixed')} 
+                    <TagButton
+                      label="自然非必要"
+                      active={selectedTags.includes('optional')}
+                      onClick={() => toggleTag('optional')}
+                      icon={<span className="text-lg">🍷</span>}
+                      className="col-span-2"
+                    />
+                    <TagButton
+                      label="不自然且不必要"
+                      active={selectedTags.includes('unnatural')}
+                      onClick={() => toggleTag('unnatural')}
+                      icon={<span className="text-lg">👑</span>}
+                      className="col-span-2"
+                    />
+                    {/* Row 2: 其它独立标签（左对齐，保持与 Row 1 等宽） */}
+                    <TagButton
+                      label="偶发支出"
+                      active={selectedTags.includes('unfixed')}
                       onClick={() => toggleTag('unfixed')}
                       icon={<span className="text-lg">💸</span>}
+                      className="col-span-2 col-start-1"
                     />
-                    <TagButton 
-                      label="非必要支出" 
-                      active={selectedTags.includes('optional')} 
-                      onClick={() => toggleTag('optional')}
-                      icon={<span className="text-lg">🍔</span>}
-                    />
-                    <TagButton 
-                      label="Idea" 
-                      active={selectedTags.includes('idea')} 
+                    <TagButton
+                      label="Idea"
+                      active={selectedTags.includes('idea')}
                       onClick={() => toggleTag('idea')}
                       icon={<span className="text-lg">💡</span>}
+                      className="col-span-2"
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
@@ -396,14 +414,14 @@ const DashboardPage: React.FC = () => {
   );
 };
 
-const TagButton: React.FC<{ label: string; active: boolean; onClick: () => void; icon: React.ReactNode }> = ({ label, active, onClick, icon }) => (
+const TagButton: React.FC<{ label: string; active: boolean; onClick: () => void; icon: React.ReactNode; className?: string }> = ({ label, active, onClick, icon, className }) => (
   <button
     onClick={onClick}
-    className={`flex-1 py-3 rounded-xl flex items-center justify-center space-x-2 transition-all ${
-      active 
-        ? 'bg-gray-900 text-white shadow-lg shadow-gray-200 scale-105' 
+    className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 transition-all ${
+      active
+        ? 'bg-gray-900 text-white shadow-lg shadow-gray-200 scale-105'
         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-    }`}
+    } ${className ?? ''}`}
   >
     {icon}
     <span className="text-sm font-medium">{label}</span>

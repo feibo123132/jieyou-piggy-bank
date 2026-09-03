@@ -10,16 +10,25 @@ import {
 import { TransactionTag } from '@/types';
 
 describe('transaction tag helpers', () => {
-  it('uses optional as the default tag', () => {
-    expect(getDefaultTransactionTags()).toEqual<TransactionTag[]>(['optional']);
-  });
-
-  it('switches optional to necessary when necessary is selected', () => {
-    expect(toggleTransactionTag(['optional'], 'necessary')).toEqual<TransactionTag[]>(['necessary']);
+  it('uses necessary as the default tag (new spendings default to 自然且必要)', () => {
+    expect(getDefaultTransactionTags()).toEqual<TransactionTag[]>(['necessary']);
   });
 
   it('switches necessary to optional when optional is selected', () => {
-    expect(toggleTransactionTag(['necessary', 'fixed'], 'optional')).toEqual<TransactionTag[]>(['fixed', 'optional']);
+    expect(toggleTransactionTag(['necessary'], 'optional')).toEqual<TransactionTag[]>(['optional']);
+  });
+
+  it('switches necessary to unnatural when unnatural is selected', () => {
+    expect(toggleTransactionTag(['necessary'], 'unnatural')).toEqual<TransactionTag[]>(['unnatural']);
+  });
+
+  it('treats the three necessity tiers as mutually exclusive', () => {
+    // necessary + optional → toggle off the optional (leaves necessary)
+    expect(toggleTransactionTag(['necessary', 'optional'], 'optional')).toEqual<TransactionTag[]>(['necessary']);
+    // unnatural → optional removes unnatural, keeps fixed
+    expect(toggleTransactionTag(['unnatural', 'fixed'], 'optional')).toEqual<TransactionTag[]>(['fixed', 'optional']);
+    // necessary → unnatural removes necessary, keeps idea
+    expect(toggleTransactionTag(['necessary', 'idea'], 'unnatural')).toEqual<TransactionTag[]>(['idea', 'unnatural']);
   });
 
   it('keeps the selection within the 3-tag limit when swapping in optional', () => {
@@ -32,7 +41,7 @@ describe('transaction tag helpers', () => {
   });
 
   it('does not remove the last remaining tag', () => {
-    expect(toggleTransactionTag(['optional'], 'optional')).toEqual<TransactionTag[]>(['optional']);
+    expect(toggleTransactionTag(['necessary'], 'necessary')).toEqual<TransactionTag[]>(['necessary']);
   });
 
   it('detects whether a day should show the idea marker', () => {

@@ -320,11 +320,11 @@ const CalendarPage: React.FC = () => {
         <div className="flex justify-center space-x-4 mt-6 text-xs text-gray-500">
           <div className="flex items-center space-x-1">
             <div className="w-2 h-2 rounded-full bg-secondary" />
-            <span>省钱了</span>
+            <span>省</span>
           </div>
           <div className="flex items-center space-x-1">
             <div className="w-2 h-2 rounded-full bg-primary" />
-            <span>超支了</span>
+            <span>超</span>
           </div>
         </div>
       </Card>
@@ -357,15 +357,17 @@ const CalendarPage: React.FC = () => {
                     >
                       <div className="flex items-center space-x-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' : 
+                          t.tags.includes('fixed') ? 'bg-purple-100 text-purple-600' :
                           t.tags.includes('unfixed') ? 'bg-indigo-100 text-indigo-600' :
-                          t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                          t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' :
+                          t.tags.includes('unnatural') ? 'bg-rose-100 text-rose-600' :
+                          'bg-orange-100 text-orange-600'
                         }`}>
-                          {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '非固' : t.tags.includes('necessary') ? '必' : '非'}
+                          {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '偶' : t.tags.includes('necessary') ? '必' : t.tags.includes('unnatural') ? '毒' : '非'}
                         </div>
                         <div>
                           <p className="font-bold text-gray-800">
-                            {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '非固定支出' : '日常消费')}
+                            {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '偶发支出' : t.tags.includes('necessary') ? '自然且必要' : t.tags.includes('unnatural') ? '不自然且不必要' : '自然非必要')}
                           </p>
                           <p className="text-xs text-gray-400 hidden">{format(new Date(t.date), 'MM-dd')}</p>
                         </div>
@@ -429,7 +431,7 @@ const CalendarPage: React.FC = () => {
                     onClick={() => openAddModal(format(viewingDate, 'yyyy-MM-dd'))}
                     className="px-4 py-2 bg-primary/10 text-primary text-sm font-medium rounded-full hover:bg-primary/20 transition-colors"
                   >
-                    补记
+                    记账
                   </button>
                   <button onClick={() => setViewingDate(null)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
                     <ChevronDown size={20} />
@@ -458,11 +460,11 @@ const CalendarPage: React.FC = () => {
                             t.tags.includes('unfixed') ? 'bg-indigo-100 text-indigo-600' :
                             t.tags.includes('necessary') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
                           }`}>
-                            {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '非固' : t.tags.includes('necessary') ? '必' : '非'}
+                            {t.tags.includes('fixed') ? '固' : t.tags.includes('unfixed') ? '偶' : t.tags.includes('necessary') ? '必' : '非'}
                           </div>
                           <div>
                             <p className="font-bold text-gray-800">
-                              {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '非固定支出' : '日常消费')}
+                              {t.note || (t.tags.includes('fixed') ? '固定支出' : t.tags.includes('unfixed') ? '偶发支出' : '日常消费')}
                             </p>
                             <p className="text-xs text-gray-400">{format(new Date(t.date), 'HH:mm')}</p>
                           </div>
@@ -536,30 +538,41 @@ const CalendarPage: React.FC = () => {
 
                 <div>
                   <label className="text-sm text-gray-500 mb-2 block">标签</label>
-                  <div className="flex space-x-3">
-                    <TagButton 
-                      label="必要支出" 
-                      active={editTags.includes('necessary')} 
+                  <div className="grid grid-cols-6 gap-3">
+                    <TagButton
+                      label="自然且必要"
+                      active={editTags.includes('necessary')}
                       onClick={() => toggleEditTag('necessary')}
                       icon={<span className="text-lg">🍚</span>}
+                      className="col-span-2"
                     />
-                    <TagButton 
-                      label="非固定支出" 
-                      active={editTags.includes('unfixed')} 
+                    <TagButton
+                      label="自然非必要"
+                      active={editTags.includes('optional')}
+                      onClick={() => toggleEditTag('optional')}
+                      icon={<span className="text-lg">🍷</span>}
+                      className="col-span-2"
+                    />
+                    <TagButton
+                      label="不自然且不必要"
+                      active={editTags.includes('unnatural')}
+                      onClick={() => toggleEditTag('unnatural')}
+                      icon={<span className="text-lg">👑</span>}
+                      className="col-span-2"
+                    />
+                    <TagButton
+                      label="偶发支出"
+                      active={editTags.includes('unfixed')}
                       onClick={() => toggleEditTag('unfixed')}
                       icon={<span className="text-lg">💸</span>}
+                      className="col-span-2 col-start-1"
                     />
-                    <TagButton 
-                      label="非必要支出" 
-                      active={editTags.includes('optional')} 
-                      onClick={() => toggleEditTag('optional')}
-                      icon={<span className="text-lg">🍔</span>}
-                    />
-                    <TagButton 
-                      label="Idea" 
-                      active={editTags.includes('idea')} 
+                    <TagButton
+                      label="Idea"
+                      active={editTags.includes('idea')}
                       onClick={() => toggleEditTag('idea')}
                       icon={<span className="text-lg">💡</span>}
+                      className="col-span-2"
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
@@ -611,9 +624,14 @@ const CalendarPage: React.FC = () => {
               exit={{ y: '100%' }}
               className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 md:max-w-4xl md:mx-auto"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-800">补记支出</h2>
-                <button onClick={() => setIsAdding(false)} className="text-gray-400">取消</button>
+              <div className="flex justify-between items-center mb-6 gap-3 flex-wrap">
+                <h2 className="text-xl font-bold text-gray-800">支出记录</h2>
+                <div className="flex items-center gap-3 flex-wrap justify-end">
+                  <span className="text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 whitespace-nowrap">
+                    ⚠️ 虽然有时爱自己需要消费，但消费≠爱自己
+                  </span>
+                  <button onClick={() => setIsAdding(false)} className="text-gray-400 whitespace-nowrap">取消</button>
+                </div>
               </div>
               
               <div className="space-y-6">
@@ -645,30 +663,41 @@ const CalendarPage: React.FC = () => {
 
                 <div>
                   <label className="text-sm text-gray-500 mb-2 block">标签</label>
-                  <div className="flex space-x-3">
-                    <TagButton 
-                      label="必要支出" 
-                      active={addTags.includes('necessary')} 
+                  <div className="grid grid-cols-6 gap-3">
+                    <TagButton
+                      label="自然且必要"
+                      active={addTags.includes('necessary')}
                       onClick={() => toggleAddTag('necessary')}
                       icon={<span className="text-lg">🍚</span>}
+                      className="col-span-2"
                     />
-                    <TagButton 
-                      label="非固定支出" 
-                      active={addTags.includes('unfixed')} 
+                    <TagButton
+                      label="自然非必要"
+                      active={addTags.includes('optional')}
+                      onClick={() => toggleAddTag('optional')}
+                      icon={<span className="text-lg">🍷</span>}
+                      className="col-span-2"
+                    />
+                    <TagButton
+                      label="不自然且不必要"
+                      active={addTags.includes('unnatural')}
+                      onClick={() => toggleAddTag('unnatural')}
+                      icon={<span className="text-lg">👑</span>}
+                      className="col-span-2"
+                    />
+                    <TagButton
+                      label="偶发支出"
+                      active={addTags.includes('unfixed')}
                       onClick={() => toggleAddTag('unfixed')}
                       icon={<span className="text-lg">💸</span>}
+                      className="col-span-2 col-start-1"
                     />
-                    <TagButton 
-                      label="非必要支出" 
-                      active={addTags.includes('optional')} 
-                      onClick={() => toggleAddTag('optional')}
-                      icon={<span className="text-lg">🍔</span>}
-                    />
-                    <TagButton 
-                      label="Idea" 
-                      active={addTags.includes('idea')} 
+                    <TagButton
+                      label="Idea"
+                      active={addTags.includes('idea')}
                       onClick={() => toggleAddTag('idea')}
                       icon={<span className="text-lg">💡</span>}
+                      className="col-span-2"
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-2 ml-1">* 最多可同时选择 3 个标签</p>
@@ -706,14 +735,14 @@ const CalendarPage: React.FC = () => {
   );
 };
 
-const TagButton: React.FC<{ label: string; active: boolean; onClick: () => void; icon: React.ReactNode }> = ({ label, active, onClick, icon }) => (
+const TagButton: React.FC<{ label: string; active: boolean; onClick: () => void; icon: React.ReactNode; className?: string }> = ({ label, active, onClick, icon, className }) => (
   <button
     onClick={onClick}
-    className={`flex-1 py-3 rounded-xl flex items-center justify-center space-x-2 transition-all ${
-      active 
-        ? 'bg-gray-900 text-white shadow-lg shadow-gray-200 scale-105' 
+    className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 transition-all ${
+      active
+        ? 'bg-gray-900 text-white shadow-lg shadow-gray-200 scale-105'
         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-    }`}
+    } ${className ?? ''}`}
   >
     {icon}
     <span className="text-sm font-medium">{label}</span>

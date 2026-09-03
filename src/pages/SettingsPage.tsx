@@ -1,12 +1,11 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Save, ArrowLeft, GripVertical, Pencil, Check, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Save, GripVertical, Pencil, Check, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useBudgetSummary } from '@/hooks/useBudgetSummary';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { FixedExpense, VariableIncome } from '@/types';
+import { FixedExpense, FixedExpenseCategory, VariableIncome } from '@/types';
 import {
   getFixedExpensesForMonth,
   normalizeFixedExpenseSnapshots,
@@ -16,12 +15,55 @@ import { getVariableIncomesForMonth, replaceVariableIncomesForMonth } from '@/li
 import { Reorder, AnimatePresence } from 'framer-motion';
 import { format, getDaysInMonth } from 'date-fns';
 
+// 固定支出项的"必要性分类"——与交易 tag 的 EXCLUSIVE_GROUPS 同口径
+const FIXED_CATEGORY_META: Record<
+  FixedExpenseCategory,
+  { label: string; icon: string; toneClassName: string; ringClassName: string }
+> = {
+  necessary: { label: '自然且必要', icon: '🍚', toneClassName: 'bg-blue-100 text-blue-600', ringClassName: 'ring-blue-400' },
+  optional:  { label: '自然非必要', icon: '🍷', toneClassName: 'bg-orange-100 text-orange-600', ringClassName: 'ring-orange-400' },
+  unnatural: { label: '不自然且不必要', icon: '👑', toneClassName: 'bg-rose-100 text-rose-600', ringClassName: 'ring-rose-400' },
+};
+
+// 列表色点用纯色 Tailwind 类
+const FIXED_CATEGORY_DOT: Record<FixedExpenseCategory, string> = {
+  necessary: 'bg-blue-500',
+  optional: 'bg-orange-500',
+  unnatural: 'bg-rose-500',
+};
+
+// 「必要性分类」3 chip 选择器（新增/编辑复用）
+const FixedCategoryChips: React.FC<{
+  value: FixedExpenseCategory;
+  onChange: (next: FixedExpenseCategory) => void;
+}> = ({ value, onChange }) => (
+  <div className="inline-flex rounded-lg overflow-hidden border border-gray-200">
+    {(['necessary', 'optional', 'unnatural'] as FixedExpenseCategory[]).map((c) => {
+      const meta = FIXED_CATEGORY_META[c];
+      const active = value === c;
+      return (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          title={meta.label}
+          className={`h-9 w-9 flex items-center justify-center transition-colors ${
+            active
+              ? `${meta.toneClassName} ring-2 ring-inset ${meta.ringClassName}`
+              : 'bg-white hover:bg-gray-50'
+          }`}
+        >
+          <span className="text-base leading-none">{meta.icon}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
 const SettingsPage: React.FC = () => {
-  const navigate = useNavigate();
   const {
     settings,
     updateSettings,
-    transactions,
     saveUserState,
     syncWarning,
     clearSyncWarning,
@@ -32,7 +74,7 @@ const SettingsPage: React.FC = () => {
   } = useAppStore();
   const { totalVariableSpent } = useBudgetSummary();
   const currentMonthKey = format(new Date(), 'yyyy-MM');
-  
+
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString());
   const [dailyBudgetInput, setDailyBudgetInput] = useState((settings.dailyBudget || 0).toString());
   const [selectedFixedMonth, setSelectedFixedMonth] = useState(currentMonthKey);
@@ -45,13 +87,14 @@ const SettingsPage: React.FC = () => {
   );
   const [selectedIncomeMonth, setSelectedIncomeMonth] = useState(currentMonthKey);
   const [allVariableIncomes, setAllVariableIncomes] = useState<VariableIncome[]>(settings.variableIncomes || []);
-  const [username, setUsername] = useState(settings.username || '');
+  const [username] = useState(settings.username || '');
   const [isSaved, setIsSaved] = useState(false);
   
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState<FixedExpenseCategory>('necessary');
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null);
   const [editIncomeLabel, setEditIncomeLabel] = useState('');
   const [editIncomeAmount, setEditIncomeAmount] = useState('');
@@ -59,6 +102,7 @@ const SettingsPage: React.FC = () => {
   // New expense form state
   const [newExpenseLabel, setNewExpenseLabel] = useState('');
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
+  const [newExpenseCategory, setNewExpenseCategory] = useState<FixedExpenseCategory>('necessary');
   const [newIncomeLabel, setNewIncomeLabel] = useState('');
   const [newIncomeAmount, setNewIncomeAmount] = useState('');
   const variableIncomes = getVariableIncomesForMonth(allVariableIncomes, selectedIncomeMonth);
@@ -80,16 +124,18 @@ const SettingsPage: React.FC = () => {
 
   const handleAddExpense = () => {
     if (!newExpenseLabel || !newExpenseAmount) return;
-    
+
     const newExpense: FixedExpense = {
       id: Date.now().toString(),
       label: newExpenseLabel,
       amount: parseFloat(newExpenseAmount),
+      category: newExpenseCategory,
     };
-    
+
     setFixedExpenses([...fixedExpenses, newExpense]);
     setNewExpenseLabel('');
     setNewExpenseAmount('');
+    setNewExpenseCategory('necessary');
   };
 
   const handleAddIncome = () => {
@@ -162,25 +208,28 @@ const SettingsPage: React.FC = () => {
     setEditingId(expense.id);
     setEditLabel(expense.label);
     setEditAmount(expense.amount.toString());
+    setEditCategory(expense.category ?? 'necessary');
   };
 
   const handleSaveEditing = () => {
     if (!editingId || !editLabel || !editAmount) return;
-    
-    setFixedExpenses(fixedExpenses.map(e => 
-      e.id === editingId 
-        ? { ...e, label: editLabel, amount: parseFloat(editAmount) }
+
+    setFixedExpenses(fixedExpenses.map(e =>
+      e.id === editingId
+        ? { ...e, label: editLabel, amount: parseFloat(editAmount), category: editCategory }
         : e
     ));
     setEditingId(null);
     setEditLabel('');
     setEditAmount('');
+    setEditCategory('necessary');
   };
 
   const handleCancelEditing = () => {
     setEditingId(null);
     setEditLabel('');
     setEditAmount('');
+    setEditCategory('necessary');
   };
 
   const handleSave = async () => {
@@ -194,12 +243,14 @@ const SettingsPage: React.FC = () => {
         id: Date.now().toString(),
         label: newExpenseLabel,
         amount: parseFloat(newExpenseAmount),
+        category: newExpenseCategory,
       };
       finalFixedExpenses = [...finalFixedExpenses, vacuumedExpense];
-      
+
       // Clear inputs
       setNewExpenseLabel('');
       setNewExpenseAmount('');
+      setNewExpenseCategory('necessary');
       setFixedExpenses(finalFixedExpenses); // Update local state view
     }
 
@@ -271,17 +322,6 @@ const SettingsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex items-center space-x-4 mb-6">
-        {settings.isOnboarded && (
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} />
-          </Button>
-        )}
-        <h1 className="text-2xl font-rounded font-bold text-gray-800">
-          {settings.isOnboarded ? '设置' : '欢迎来到 JIEYOU'}
-        </h1>
-      </div>
-
       <Card>
         {syncWarning && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -487,21 +527,27 @@ const SettingsPage: React.FC = () => {
             本次保存从{selectedFixedMonthLabel}起生效（覆盖未来已创建月份）
           </label>
 
-          <div className="flex space-x-2">
-            <Input
-              placeholder="项目（如：房租）"
-              value={newExpenseLabel}
-              onChange={(e) => setNewExpenseLabel(e.target.value)}
-            />
-            <Input
-              type="number"
-              placeholder="金额"
-              value={newExpenseAmount}
-              onChange={(e) => setNewExpenseAmount(e.target.value)}
-            />
-            <Button onClick={handleAddExpense} variant="secondary" className="px-3">
-              <Plus size={20} />
-            </Button>
+          <div className="space-y-2">
+            <div className="flex space-x-2">
+              <Input
+                placeholder="项目（如：房租）"
+                value={newExpenseLabel}
+                onChange={(e) => setNewExpenseLabel(e.target.value)}
+              />
+              <Input
+                type="number"
+                placeholder="金额"
+                value={newExpenseAmount}
+                onChange={(e) => setNewExpenseAmount(e.target.value)}
+              />
+              <Button onClick={handleAddExpense} variant="secondary" className="px-3">
+                <Plus size={20} />
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 shrink-0">必要性分类</span>
+              <FixedCategoryChips value={newExpenseCategory} onChange={setNewExpenseCategory} />
+            </div>
           </div>
 
           <div className="space-y-2 mt-4">
@@ -518,26 +564,32 @@ const SettingsPage: React.FC = () => {
                   >
                     {editingId === expense.id ? (
                       // Editing Mode
-                      <div className="flex w-full space-x-2 items-center">
-                        <Input
-                          value={editLabel}
-                          onChange={(e) => setEditLabel(e.target.value)}
-                          className="h-8 text-sm"
-                          autoFocus
-                        />
-                        <Input
-                          type="number"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          className="h-8 w-24 text-sm"
-                        />
-                        <div className="flex space-x-1">
-                          <button onClick={handleSaveEditing} className="p-1 text-green-600 hover:bg-green-100 rounded">
-                            <Check size={16} />
-                          </button>
-                          <button onClick={handleCancelEditing} className="p-1 text-red-500 hover:bg-red-100 rounded">
-                            <X size={16} />
-                          </button>
+                      <div className="flex w-full flex-col gap-2">
+                        <div className="flex w-full space-x-2 items-center">
+                          <Input
+                            value={editLabel}
+                            onChange={(e) => setEditLabel(e.target.value)}
+                            className="h-8 text-sm"
+                            autoFocus
+                          />
+                          <Input
+                            type="number"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
+                            className="h-8 w-24 text-sm"
+                          />
+                          <div className="flex space-x-1">
+                            <button onClick={handleSaveEditing} className="p-1 text-green-600 hover:bg-green-100 rounded">
+                              <Check size={16} />
+                            </button>
+                            <button onClick={handleCancelEditing} className="p-1 text-red-500 hover:bg-red-100 rounded">
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 shrink-0">必要性分类</span>
+                          <FixedCategoryChips value={editCategory} onChange={setEditCategory} />
                         </div>
                       </div>
                     ) : (
@@ -547,6 +599,12 @@ const SettingsPage: React.FC = () => {
                            <div className="cursor-grab active:cursor-grabbing text-gray-400">
                              <GripVertical size={18} />
                            </div>
+                           <span
+                             className={`shrink-0 inline-block w-2.5 h-2.5 rounded-full ${
+                               FIXED_CATEGORY_DOT[expense.category ?? 'necessary']
+                             }`}
+                             title={FIXED_CATEGORY_META[expense.category ?? 'necessary'].label}
+                           />
                            <span className="font-medium text-gray-700">{expense.label}</span>
                         </div>
                         <div className="flex items-center space-x-3">
@@ -557,7 +615,7 @@ const SettingsPage: React.FC = () => {
                           >
                             <Pencil size={16} />
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleRemoveExpense(expense.id)}
                             className="text-gray-400 hover:text-red-500 transition-colors"
                           >

@@ -7,9 +7,10 @@ export const TRANSACTION_TAG_OPTIONS: Array<{
   label: string;
   icon: string;
 }> = [
-  { tag: 'necessary', label: '必要支出', icon: '🍰' },
-  { tag: 'unfixed', label: '非固定支出', icon: '⚡' },
-  { tag: 'optional', label: '非必要支出', icon: '🍔' },
+  { tag: 'necessary', label: '自然且必要', icon: '🍚' },
+  { tag: 'optional', label: '自然非必要', icon: '🍷' },
+  { tag: 'unnatural', label: '不自然且不必要', icon: '👑' },
+  { tag: 'unfixed', label: '偶发支出', icon: '💸' },
   { tag: 'idea', label: 'Idea', icon: '💡' },
 ];
 
@@ -23,7 +24,7 @@ export const TRANSACTION_TAG_META: Record<
 > = {
   necessary: {
     shortLabel: '必',
-    defaultNote: '必要支出',
+    defaultNote: '自然且必要',
     toneClassName: 'bg-blue-100 text-blue-600',
   },
   fixed: {
@@ -32,14 +33,19 @@ export const TRANSACTION_TAG_META: Record<
     toneClassName: 'bg-purple-100 text-purple-600',
   },
   unfixed: {
-    shortLabel: '非固',
-    defaultNote: '非固定支出',
+    shortLabel: '偶',
+    defaultNote: '偶发支出',
     toneClassName: 'bg-indigo-100 text-indigo-600',
   },
   optional: {
     shortLabel: '非',
-    defaultNote: '日常消费',
+    defaultNote: '自然非必要',
     toneClassName: 'bg-orange-100 text-orange-600',
+  },
+  unnatural: {
+    shortLabel: '毒',
+    defaultNote: '不自然且不必要',
+    toneClassName: 'bg-rose-100 text-rose-600',
   },
   idea: {
     shortLabel: '想',
@@ -48,12 +54,21 @@ export const TRANSACTION_TAG_META: Record<
   },
 };
 
-const EXCLUSIVE_TAGS = new Map<TransactionTag, TransactionTag>([
-  ['necessary', 'optional'],
-  ['optional', 'necessary'],
-]);
+// 互斥组：必要性三档互斥，每次只能选其一
+const EXCLUSIVE_GROUPS: TransactionTag[][] = [
+  ['necessary', 'optional', 'unnatural'],
+];
 
-export const getDefaultTransactionTags = (): TransactionTag[] => ['optional'];
+const getConflictingTags = (tag: TransactionTag): TransactionTag[] => {
+  for (const group of EXCLUSIVE_GROUPS) {
+    if (group.includes(tag)) {
+      return group.filter((member) => member !== tag);
+    }
+  }
+  return [];
+};
+
+export const getDefaultTransactionTags = (): TransactionTag[] => ['necessary'];
 
 export const toggleTransactionTag = (
   currentTags: TransactionTag[],
@@ -67,8 +82,10 @@ export const toggleTransactionTag = (
       : dedupedTags.filter((currentTag) => currentTag !== tag);
   }
 
-  const conflictingTag = EXCLUSIVE_TAGS.get(tag);
-  const nextTags = dedupedTags.filter((currentTag) => currentTag !== conflictingTag);
+  const conflictingTags = getConflictingTags(tag);
+  const nextTags = dedupedTags.filter(
+    (currentTag) => !conflictingTags.includes(currentTag)
+  );
   return [...nextTags, tag].slice(-MAX_TRANSACTION_TAGS);
 };
 
@@ -79,5 +96,6 @@ export const getPrimaryTransactionTag = (tags: TransactionTag[]): TransactionTag
   if (tags.includes('unfixed')) return 'unfixed';
   if (tags.includes('necessary')) return 'necessary';
   if (tags.includes('optional')) return 'optional';
+  if (tags.includes('unnatural')) return 'unnatural';
   return 'idea';
 };
